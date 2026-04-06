@@ -41,13 +41,17 @@ def download(out_dir: str, task: str, max_cases: Optional[int]):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    # Step 1: download raw dataset (skips if already downloaded)
-    raw_dir = out / "raw_airfrans"
-    if not raw_dir.exists():
+    # Step 1: download raw dataset
+    # Use a marker file we control — the airfrans library does not create a
+    # predictable subdirectory name, so we can't rely on that check.
+    marker = out / ".airfrans_downloaded"
+    if not marker.exists():
         print("Downloading AirfRANS dataset (~3 GB)...")
         af.dataset.download(root=str(out), unzip=True)
+        marker.touch()
+        print("Download complete.")
     else:
-        print(f"Raw data already at {raw_dir} — skipping download.")
+        print(f"Raw data already downloaded (marker found) — skipping.")
 
     manifest = []
 
