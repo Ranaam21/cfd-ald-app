@@ -33,7 +33,7 @@ import numpy as np
 
 PROBLEMS = ["cavity", "tube", "dam", "cylinder"]
 
-HF_REPO   = "luo-yining/CFDBench"
+HF_REPO   = "chen-yingfa/CFDBench"
 HF_SUBSETS = {
     "cavity":   "cavity",
     "tube":     "tube",
@@ -68,7 +68,7 @@ def download(out_dir: str, problems: list, max_cases: Optional[int]):
         prob_dir = out / prob
         prob_dir.mkdir(exist_ok=True)
 
-        ds = load_dataset(HF_REPO, name=HF_SUBSETS[prob], trust_remote_code=True)
+        ds = load_dataset(HF_REPO, name=HF_SUBSETS[prob])
 
         for split_name, split_ds in ds.items():
             cases = split_ds
