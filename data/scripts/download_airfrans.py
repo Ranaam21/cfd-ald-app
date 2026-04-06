@@ -47,10 +47,9 @@ def download(out_dir: str, split: str, max_cases: Optional[int]):
 
         # HuggingFace dataset name and config
         ds = load_dataset(
-            "jdunstan/Airfrans",
+            "PLAID-datasets/AirfRANS_original",
             name=split,
             split="train" if is_train else "test",
-            trust_remote_code=True,
         )
 
         if max_cases:
