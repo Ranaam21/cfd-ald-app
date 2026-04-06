@@ -59,8 +59,9 @@ def download(out_dir: str, task: str, max_cases: Optional[int]):
     for is_train, subset_name in [(True, "train"), (False, "test")]:
         print(f"\n── task={task}  subset={subset_name} ──")
 
+        # airfrans 0.1.2 extracts to out/Dataset/ — pass that as root
         dataset, dataname = af.dataset.load(
-            root=str(out),
+            root=str(out / "Dataset"),
             task=task,
             train=is_train,
         )
@@ -73,9 +74,11 @@ def download(out_dir: str, task: str, max_cases: Optional[int]):
         subset_dir.mkdir(parents=True, exist_ok=True)
 
         for i, (case, name) in enumerate(zip(dataset, dataname)):
-            x    = np.array(case["x"],    dtype=np.float32)   # [N, 5]
-            y    = np.array(case["y"],    dtype=np.float32)   # [N, 4]
-            surf = np.array(case["surf"], dtype=bool)          # [N]
+            # airfrans 0.1.2 returns each case as ndarray [N, 12]
+            # cols: 0-4 = input features, 5-8 = flow outputs, 9 = surf mask
+            x    = case[:, :5].astype(np.float32)   # [N, 5]
+            y    = case[:, 5:9].astype(np.float32)  # [N, 4]
+            surf = case[:, 9].astype(bool)           # [N]
 
             save_path = subset_dir / f"{name}.npz"
             np.savez_compressed(save_path, x=x, y=y, surf=surf)
