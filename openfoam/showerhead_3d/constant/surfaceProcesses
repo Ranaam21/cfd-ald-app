@@ -1,0 +1,36 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  aldFoam surface reaction dictionary
+  Reactant: N1 (generic ALD precursor, e.g. TMA)
+  Reaction: first-order Langmuir-type surface adsorption
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      surfaceProcesses;
+}
+
+// Number of surface species (coverage fields)
+nSurfaceSpecies     1;
+
+// Surface species names must match fields in 0/
+surfaceSpecies
+(
+    cov
+);
+
+// Reaction: N1 (gas) + empty_site → adsorbed_N1
+// Rate law handled by firstorder BC (in 0/N1 boundary field)
+// betaField and diffCoeff set per-boundary in 0/N1
+
+surfaceReactions
+{
+    adsorption
+    {
+        type        firstOrder;
+        reactant    N1;
+        product     cov;
+        growthField growth;
+    }
+}

@@ -1,0 +1,51 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Numerical schemes for aldFoam showerhead simulation
+  Flow regime: low-Re laminar (Re < 500 for nozzle flows)
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      fvSchemes;
+}
+
+ddtSchemes
+{
+    default         Euler;
+}
+
+gradSchemes
+{
+    default         Gauss linear;
+}
+
+divSchemes
+{
+    default             none;
+    div(phi,U)          Gauss linearUpwind grad(U);
+    div(phi,N1)         Gauss linearUpwind grad(N1);
+    div(phi,Exp1)       Gauss linearUpwind grad(Exp1);
+    div((nuEff*dev(T(grad(U)))) )   Gauss linear;
+}
+
+laplacianSchemes
+{
+    default             Gauss linear corrected;
+}
+
+interpolationSchemes
+{
+    default             linear;
+}
+
+snGradSchemes
+{
+    default             corrected;
+}
+
+fluxRequired
+{
+    default             no;
+    p                   ;
+}

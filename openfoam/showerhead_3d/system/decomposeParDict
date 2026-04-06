@@ -1,0 +1,14 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Parallel decomposition — adjust numberOfSubdomains to match your CPU count
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      decomposeParDict;
+}
+
+numberOfSubdomains  4;   // change to nCores available (e.g. 8 or 14 on M-series)
+
+method          scotch;   // automatic load-balanced decomposition
