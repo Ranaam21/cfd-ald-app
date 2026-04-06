@@ -1,16 +1,17 @@
 """
 data/scripts/download_airfrans.py
 
-Downloads the AirfRANS dataset from HuggingFace using the `datasets` library
-and saves raw files to data/raw/airfrans/.
+Downloads AirfRANS using the official airfrans library and saves
+each case as a .npz file for the HDF5 conversion pipeline.
 
-AirfRANS — 1000 incompressible RANS simulations over NACA 4/5-digit airfoils.
-HuggingFace repo: jdunstan/Airfrans
-Splits: scarce (200 train cases), full (800 train cases)
+AirfRANS — 1000 incompressible RANS simulations over NACA airfoils.
+Fields per node: x [N,5] (coords + BCs), y [N,4] (u_x, u_y, p, nu_t)
 
-Usage (Colab)
--------------
-    python3 data/scripts/download_airfrans.py --out /content/drive/MyDrive/cfd-ald-app/data/raw/airfrans --split scarce
+Usage
+-----
+    python3 data/scripts/download_airfrans.py \
+        --out /content/drive/MyDrive/cfd-ald-app/data/raw/airfrans \
+        --task scarce
 """
 
 import argparse
@@ -24,60 +25,67 @@ import numpy as np
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--out",       default="data/raw/airfrans")
-    p.add_argument("--split",     default="scarce",
-                   choices=["scarce", "full"],
-                   help="scarce=200 cases (fast), full=800 cases")
+    p.add_argument("--task",      default="scarce",
+                   choices=["scarce", "full", "reynolds", "aoa"],
+                   help="scarce=200, full=800, reynolds/aoa=specific splits")
     p.add_argument("--max_cases", type=int, default=None)
     return p.parse_args()
 
 
-def download(out_dir: str, split: str, max_cases: Optional[int]):
+def download(out_dir: str, task: str, max_cases: Optional[int]):
     try:
-        from datasets import load_dataset
+        import airfrans as af
     except ImportError:
-        raise ImportError("pip install datasets")
+        raise ImportError("pip install airfrans")
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
+    # Step 1: download raw dataset (skips if already downloaded)
+    raw_dir = out / "raw_airfrans"
+    if not raw_dir.exists():
+        print("Downloading AirfRANS dataset (~3 GB)...")
+        af.dataset.download(root=str(out), unzip=True)
+    else:
+        print(f"Raw data already at {raw_dir} — skipping download.")
+
     manifest = []
 
+    # Step 2: load train + test splits
     for is_train, subset_name in [(True, "train"), (False, "test")]:
-        print(f"\n── AirfRANS  split={split}  subset={subset_name} ──")
+        print(f"\n── task={task}  subset={subset_name} ──")
 
-        # HuggingFace dataset name and config
-        ds = load_dataset(
-            "PLAID-datasets/AirfRANS_original",
-            name=split,
-            split="train" if is_train else "test",
+        dataset, dataname = af.dataset.load(
+            root=str(out),
+            task=task,
+            train=is_train,
         )
 
         if max_cases:
-            ds = ds.select(range(min(max_cases, len(ds))))
+            dataset  = dataset[:max_cases]
+            dataname = dataname[:max_cases]
 
-        subset_dir = out / split / subset_name
+        subset_dir = out / task / subset_name
         subset_dir.mkdir(parents=True, exist_ok=True)
 
-        for i, sample in enumerate(ds):
-            # Each sample has keys: x [N,5], y [N,4], surf [N], simulation_id
-            name      = sample.get("simulation_id", f"{split}_{subset_name}_{i:05d}")
-            x         = np.array(sample["x"],    dtype=np.float32)   # [N, 5]
-            y         = np.array(sample["y"],    dtype=np.float32)   # [N, 4]
-            surf      = np.array(sample["surf"], dtype=bool)          # [N]
+        for i, (case, name) in enumerate(zip(dataset, dataname)):
+            x    = np.array(case["x"],    dtype=np.float32)   # [N, 5]
+            y    = np.array(case["y"],    dtype=np.float32)   # [N, 4]
+            surf = np.array(case["surf"], dtype=bool)          # [N]
 
             save_path = subset_dir / f"{name}.npz"
             np.savez_compressed(save_path, x=x, y=y, surf=surf)
 
             manifest.append({
                 "name":  name,
-                "split": f"{split}/{subset_name}",
+                "split": f"{task}/{subset_name}",
                 "file":  str(save_path.relative_to(out)),
             })
 
             if (i + 1) % 50 == 0 or i == 0:
-                print(f"  saved {i+1}/{len(ds)}  shape x={x.shape} y={y.shape}")
+                print(f"  saved {i+1}/{len(dataset)}  x={x.shape} y={y.shape}")
 
-        print(f"  ✓  {len(ds)} cases → {subset_dir}")
+        print(f"  ✓  {len(dataset)} cases → {subset_dir}")
 
     manifest_path = out / "manifest.json"
     with open(manifest_path, "w") as f:
@@ -87,4 +95,4 @@ def download(out_dir: str, split: str, max_cases: Optional[int]):
 
 if __name__ == "__main__":
     args = parse_args()
-    download(args.out, args.split, args.max_cases)
+    download(args.out, args.task, args.max_cases)
