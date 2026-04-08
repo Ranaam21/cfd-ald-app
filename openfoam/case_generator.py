@@ -311,12 +311,12 @@ divSchemes
 {{
     default                         none;
     div(phi,U)                      Gauss linearUpwind grad(U);
-    div(phi,Yi_h)                   Gauss linearUpwind grad(Yi_h);
+    div(phi,Yi_h)                   Gauss limitedLinear 1;
     div(phi,h)                      Gauss linearUpwind grad(h);
     div(phi,K)                      Gauss linearUpwind grad(K);
     div(phi,epsilon)                Gauss linearUpwind grad(epsilon);
-    div(phi,k)                      {div_k}
-    div(phi,omega)                  {div_omega}
+{"    div(phi,k)                      " + div_k if div_k else ""}
+{"    div(phi,omega)                  " + div_omega if div_omega else ""}
     div((nuEff*dev2(T(grad(U)))))   Gauss linear;
     div(((rho*nuEff)*dev2(T(grad(U))))) Gauss linear;
 }}
@@ -392,6 +392,15 @@ solvers
     }}
     hFinal  {{ $h; relTol 0; }}
 
+    Yi
+    {{
+        solver          PBiCGStab;
+        preconditioner  DILU;
+        tolerance       1e-10;
+        relTol          0.1;
+    }}
+    YiFinal  {{ $Yi; relTol 0; }}
+
     "(TMA|N2)"
     {{
         solver          PBiCGStab;
@@ -399,7 +408,7 @@ solvers
         tolerance       1e-10;
         relTol          0.1;
     }}
-    "(TMA|N2)Final"  {{ $TMA; relTol 0; }}
+    "(TMA|N2)Final"  {{ $Yi; relTol 0; }}
 {turb_solvers}
 }}
 
@@ -441,7 +450,7 @@ def _thermophysicalProperties(T_inlet: float) -> str:
 thermoType
 {{
     type            hePsiThermo;
-    mixture         reactingMixture;
+    mixture         multiComponentMixture;
     transport       sutherland;
     thermo          janaf;
     energy          sensibleEnthalpy;
@@ -450,10 +459,6 @@ thermoType
 }}
 
 inertSpecie N2;
-
-chemistryReader foamChemistryReader;
-
-foamChemistryFile "$FOAM_CASE/constant/reactions";
 
 species
 (
@@ -659,12 +664,11 @@ boundaryField
         type            uniformFixedValue;
         uniformValue    table
         (
-            (0                   0     )
-            (1e-5                0.01  )   // ramp up at start of pulse
-            ({pulse_time:.4f}    0.01  )   // end of pulse
-            ({purge_start:.4f}   0.01  )
-            ({purge_end:.4f}     0     )   // ramp down — purge begins
-            (1e6                 0     )
+            (0                  0    )
+            (1e-5               0.01 )
+            ({pulse_time:.4f}   0.01 )
+            ({purge_end:.4f}    0    )
+            (1e6                0    )
         );
     }}
     outlet
@@ -680,8 +684,9 @@ boundaryField
     }}
     wafer
     {{
-        // First-order surface reaction: TMA adsorbs on wafer
-        type            zeroGradient;
+        // Full sticking: TMA consumed at wafer surface
+        type            fixedValue;
+        value           uniform 0;
     }}
     outerWalls      {{ type zeroGradient; }}
     plenum_walls    {{ type zeroGradient; }}
@@ -872,6 +877,8 @@ def generate_case(
         _reactions(beta, v_th, D_m))
     (out / "constant" / "momentumTransport").write_text(
         _momentumTransport(turbulent))
+    (out / "constant" / "turbulenceProperties").write_text(
+        _momentumTransport(turbulent).replace('"momentumTransport"', '"turbulenceProperties"'))
     (out / "constant" / "thermophysicalTransport").write_text(
         _thermophysicalTransport())
 

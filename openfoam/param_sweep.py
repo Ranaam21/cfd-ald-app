@@ -1,10 +1,10 @@
 """
 openfoam/param_sweep.py
 
-Generates and (optionally) runs a parametric sweep of aldFoam showerhead cases.
+Generates and runs a parametric sweep of reactingFoam showerhead cases via Docker.
 
-Default sweep: 5 geometry × 4 process parameters = 80 cases
-Start small with --dry_run or --max_cases 5 to verify the setup first.
+Default first run: 80 cases (5D × 4pitch × 4Q, beta fixed at 0.05)
+Full sweep:        320 cases (add --max_cases 320 --beta_values 0.01,0.05,0.1,0.5)
 
 Usage
 -----
@@ -14,11 +14,11 @@ Usage
     # Generate case directories only (no OpenFOAM run)
     python3 openfoam/param_sweep.py --generate_only --out_dir openfoam/cases
 
-    # Generate + run all cases sequentially (requires OpenFOAM installed)
-    python3 openfoam/param_sweep.py --out_dir openfoam/cases --n_parallel 4
+    # Generate + run 80 cases in parallel (6 Docker containers)
+    python3 openfoam/param_sweep.py --out_dir openfoam/cases --n_parallel 6
 
-    # Quick 5-case test
-    python3 openfoam/param_sweep.py --max_cases 5 --generate_only
+    # Full 320-case sweep (2 overnight runs)
+    python3 openfoam/param_sweep.py --out_dir openfoam/cases --n_parallel 6 --max_cases 320
 """
 
 import argparse
@@ -26,6 +26,7 @@ import itertools
 import json
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -40,7 +41,7 @@ from openfoam.case_generator import generate_case
 # Sweep parameter grid
 # ══════════════════════════════════════════════════════════════════════════
 
-# Geometry axes — vary showerhead design
+# Geometry axes
 GEOM_SWEEP = {
     "D":            [0.001, 0.0015, 0.002, 0.0025, 0.003],   # nozzle diameters [m]
     "pitch_over_D": [3.0, 4.0, 5.0, 6.0],                    # pitch / D
@@ -48,27 +49,30 @@ GEOM_SWEEP = {
 
 # Shared geometry params (fixed across sweep)
 GEOM_BASE = {
-    "H_plenum":  0.020,   # 20 mm plenum
-    "t_face":    0.003,   # 3 mm faceplate
-    "standoff":  0.020,   # 20 mm standoff
-    "D_plate":   0.300,   # 300 mm wafer
-    "theta_deg": 0.0,     # straight nozzles
+    "H_plenum":  0.020,
+    "t_face":    0.003,
+    "standoff":  0.020,
+    "D_plate":   0.300,
+    "theta_deg": 0.0,
 }
 
-# Process axes — vary operating conditions
+# Process axes — beta fixed at 0.05 for first 80-case run; expand later
 PROCESS_SWEEP = {
     "flow_rate_slm": [1.0, 2.0, 5.0, 10.0],
-    "beta":          [0.01, 0.05, 0.1, 0.5],
+    "beta":          [0.05],
 }
 
 # Fixed process params
 PROCESS_BASE = {
-    "v_th":       144.0,    # TMA thermal velocity [m/s]
-    "D_m":        2.5e-5,   # TMA diffusivity in N2 [m²/s]
-    "pulse_time": 0.10,     # 100 ms pulse
-    "purge_time": 0.10,     # 100 ms purge
+    "v_th":       144.0,
+    "D_m":        2.5e-5,
+    "pulse_time": 0.10,
+    "purge_time": 0.10,
     "dt":         1e-4,
 }
+
+DOCKER_IMAGE = "opencfd/openfoam-default:latest"
+CASE_TIMEOUT = 7200   # 2 hours per case (generous)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -76,10 +80,6 @@ PROCESS_BASE = {
 # ══════════════════════════════════════════════════════════════════════════
 
 def build_case_list(max_cases: int = None) -> list:
-    """
-    Returns a list of dicts, one per case:
-        {"case_name": str, "geo_params": dict, "process_params": dict}
-    """
     cases = []
     g_keys = list(GEOM_SWEEP.keys())
     g_vals = list(GEOM_SWEEP.values())
@@ -95,16 +95,16 @@ def build_case_list(max_cases: int = None) -> list:
             proc_params = dict(PROCESS_BASE)
             proc_params.update(dict(zip(p_keys, p_combo)))
 
-            D_mm   = geo_params["D"] * 1e3
-            pitch  = geo_params["pitch_over_D"]
-            Q      = proc_params["flow_rate_slm"]
-            b      = proc_params["beta"]
-            name   = f"case_{idx:04d}_D{D_mm:.1f}mm_p{pitch:.1f}_Q{Q:.1f}slm_b{b:.3f}"
+            D_mm  = geo_params["D"] * 1e3
+            pitch = geo_params["pitch_over_D"]
+            Q     = proc_params["flow_rate_slm"]
+            b     = proc_params["beta"]
+            name  = f"case_{idx:04d}_D{D_mm:.1f}mm_p{pitch:.1f}_Q{Q:.1f}slm_b{b:.3f}"
 
             cases.append({
-                "case_name":     name,
-                "case_idx":      idx,
-                "geo_params":    geo_params,
+                "case_name":      name,
+                "case_idx":       idx,
+                "geo_params":     geo_params,
                 "process_params": proc_params,
             })
             idx += 1
@@ -116,88 +116,129 @@ def build_case_list(max_cases: int = None) -> list:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# Single case runner
+# Case generation
 # ══════════════════════════════════════════════════════════════════════════
 
-def run_single_case(case_info: dict, out_dir: Path,
-                    generate_only: bool = False) -> dict:
-    """
-    Generate + optionally run one OpenFOAM case.
-
-    Returns a status dict with keys: name, status, case_dir, error.
-    """
-    name         = case_info["case_name"]
-    geo_params   = case_info["geo_params"]
-    proc_params  = case_info["process_params"]
-    case_dir     = out_dir / name
+def generate_one(case_info: dict, out_dir: Path) -> dict:
+    name       = case_info["case_name"]
+    geo_params = case_info["geo_params"]
+    proc       = case_info["process_params"]
+    case_dir   = out_dir / name
 
     result = {"name": name, "case_dir": str(case_dir), "status": "pending", "error": ""}
 
-    # ── Build geometry ────────────────────────────────────────────────────
     try:
         topology = ShowerheadTopology(pattern=NozzlePattern.HEX)
         geo      = build_showerhead(geo_params, topology)
     except Exception as e:
-        result["status"] = "failed"
-        result["error"]  = f"Geometry build failed: {e}"
+        result.update(status="failed", error=f"Geometry build failed: {e}")
         return result
 
-    # ── Quality check ─────────────────────────────────────────────────────
     report = check_geometry(geo)
     if not report.passed:
         errors = [i.message for i in report.issues if i.level == "error"]
-        result["status"] = "skipped_quality"
-        result["error"]  = " | ".join(errors)
-        print(f"  [SKIP] {name}: quality check failed — {result['error']}")
+        result.update(status="skipped_quality", error=" | ".join(errors))
         return result
 
-    # ── Generate case directory ───────────────────────────────────────────
     try:
         generate_case(
             geo=geo,
             case_dir=str(case_dir),
-            flow_rate_slm=proc_params["flow_rate_slm"],
-            beta=proc_params["beta"],
-            v_th=proc_params["v_th"],
-            D_m=proc_params["D_m"],
-            pulse_time=proc_params["pulse_time"],
-            purge_time=proc_params["purge_time"],
-            dt=proc_params["dt"],
+            flow_rate_slm=proc["flow_rate_slm"],
+            beta=proc["beta"],
+            v_th=proc["v_th"],
+            D_m=proc["D_m"],
+            pulse_time=proc["pulse_time"],
+            purge_time=proc["purge_time"],
+            dt=proc["dt"],
         )
         result["status"] = "generated"
     except Exception as e:
-        result["status"] = "failed"
-        result["error"]  = f"Case generation failed: {e}"
-        return result
-
-    if generate_only:
-        return result
-
-    # ── Run OpenFOAM ─────────────────────────────────────────────────────
-    try:
-        proc = subprocess.run(
-            ["bash", "run.sh"],
-            cwd=str(case_dir),
-            capture_output=True,
-            text=True,
-            timeout=3600,   # 1 hour timeout per case
-        )
-        if proc.returncode == 0:
-            result["status"] = "completed"
-        else:
-            result["status"] = "foam_failed"
-            result["error"]  = proc.stderr[-500:]   # last 500 chars of stderr
-    except subprocess.TimeoutExpired:
-        result["status"] = "timeout"
-        result["error"]  = "Case exceeded 1 hour timeout."
-    except FileNotFoundError:
-        result["status"] = "no_openfoam"
-        result["error"]  = (
-            "OpenFOAM not found. Install via Homebrew:\n"
-            "  brew install --cask openfoam"
-        )
+        result.update(status="failed", error=f"Case generation failed: {e}")
 
     return result
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Docker runner (single case)
+# ══════════════════════════════════════════════════════════════════════════
+
+def _is_completed(case_dir: Path) -> bool:
+    """Case is done if a non-zero time directory exists with a U field."""
+    for d in case_dir.iterdir():
+        if d.is_dir() and d.name != "0":
+            try:
+                t = float(d.name)
+                if t > 0 and (d / "U").exists():
+                    return True
+            except ValueError:
+                pass
+    return False
+
+
+def run_case_docker(case_dir: Path, verbose: bool = False) -> dict:
+    """Run a single case inside a Docker container. Skips if already done."""
+    name = case_dir.name
+
+    if not case_dir.exists():
+        return {"name": name, "status": "not_found", "error": "Case directory missing"}
+
+    if _is_completed(case_dir):
+        print(f"  [SKIP] {name}: already completed")
+        return {"name": name, "status": "completed_cached"}
+
+    lock = case_dir / ".running"
+    lock.touch()
+
+    print(f"  [RUN ] {name}")
+    try:
+        proc = subprocess.run(
+            [
+                "docker", "run", "--rm",
+                "-v", f"{case_dir.resolve()}:/case",
+                DOCKER_IMAGE,
+                "bash", "-c", "cd /case && bash run.sh"
+            ],
+            capture_output=not verbose,
+            text=True,
+            timeout=CASE_TIMEOUT,
+        )
+        lock.unlink(missing_ok=True)
+
+        if proc.returncode == 0:
+            print(f"  [DONE] {name}")
+            return {"name": name, "status": "completed"}
+        else:
+            err = (proc.stderr or "")[-800:]
+            print(f"  [FAIL] {name}: {err[-200:]}")
+            return {"name": name, "status": "foam_failed", "error": err}
+
+    except subprocess.TimeoutExpired:
+        lock.unlink(missing_ok=True)
+        print(f"  [TIMEOUT] {name}")
+        return {"name": name, "status": "timeout", "error": "Exceeded 2h timeout"}
+
+    except Exception as e:
+        lock.unlink(missing_ok=True)
+        return {"name": name, "status": "error", "error": str(e)}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Parallel sweep runner
+# ══════════════════════════════════════════════════════════════════════════
+
+def run_sweep_parallel(case_dirs: list, n_parallel: int = 6) -> list:
+    """Run all cases with up to n_parallel Docker containers at once."""
+    results = []
+    print(f"\nRunning {len(case_dirs)} cases with {n_parallel} parallel Docker containers\n")
+
+    with ThreadPoolExecutor(max_workers=n_parallel) as executor:
+        futures = {executor.submit(run_case_docker, d): d for d in case_dirs}
+        for future in as_completed(futures):
+            result = future.result()
+            results.append(result)
+
+    return results
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -207,14 +248,16 @@ def run_single_case(case_info: dict, out_dir: Path,
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--out_dir",       default="openfoam/cases")
-    p.add_argument("--max_cases",     type=int, default=None,
-                   help="Limit total cases (useful for testing)")
+    p.add_argument("--max_cases",     type=int, default=80,
+                   help="Cases to run (default 80; use 320 for full sweep)")
+    p.add_argument("--n_parallel",    type=int, default=6,
+                   help="Parallel Docker containers (default 6)")
     p.add_argument("--dry_run",       action="store_true",
                    help="Print case list only, write nothing")
     p.add_argument("--generate_only", action="store_true",
                    help="Write case dirs but do not run OpenFOAM")
-    p.add_argument("--n_parallel",    type=int, default=1,
-                   help="Number of cases to run in parallel (requires GNU parallel)")
+    p.add_argument("--verbose",       action="store_true",
+                   help="Stream Docker output to console")
     return p.parse_args()
 
 
@@ -223,8 +266,9 @@ def main():
     out_dir = Path(args.out_dir)
     cases   = build_case_list(args.max_cases)
 
-    print(f"Sweep: {len(cases)} cases  →  {out_dir}")
-    print(f"Mode : {'dry_run' if args.dry_run else ('generate_only' if args.generate_only else 'run')}")
+    total = len(cases)
+    print(f"Sweep : {total} cases  →  {out_dir}")
+    print(f"Mode  : {'dry_run' if args.dry_run else ('generate_only' if args.generate_only else f'run ({args.n_parallel} parallel)')}")
 
     if args.dry_run:
         for c in cases:
@@ -233,27 +277,49 @@ def main():
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    statuses = []
+    # ── Step 1: generate all case directories ────────────────────────────
+    print(f"\n── Generating {total} case directories ──")
+    gen_results = []
     for i, case_info in enumerate(cases):
-        print(f"\n[{i+1}/{len(cases)}] {case_info['case_name']}")
-        status = run_single_case(case_info, out_dir, args.generate_only)
-        statuses.append(status)
-        print(f"  → {status['status']}"
-              + (f": {status['error']}" if status["error"] else ""))
+        r = generate_one(case_info, out_dir)
+        gen_results.append(r)
+        status_icon = "✓" if r["status"] == "generated" else "✗"
+        print(f"  [{i+1:3d}/{total}] {status_icon} {r['name']}"
+              + (f"  ERR: {r['error']}" if r["error"] else ""))
 
-    # ── Summary ───────────────────────────────────────────────────────────
+    generated = [r for r in gen_results if r["status"] == "generated"]
+    print(f"\nGenerated {len(generated)}/{total} cases")
+
+    if args.generate_only:
+        _write_summary(out_dir, gen_results)
+        return
+
+    # ── Step 2: run in parallel via Docker ───────────────────────────────
+    case_dirs = [out_dir / r["name"] for r in generated]
+    run_results = run_sweep_parallel(case_dirs, n_parallel=args.n_parallel)
+
+    # Merge gen + run results
+    run_map = {r["name"]: r for r in run_results}
+    for r in gen_results:
+        if r["name"] in run_map:
+            r.update(run_map[r["name"]])
+
+    _write_summary(out_dir, gen_results)
+
+
+def _write_summary(out_dir: Path, statuses: list):
     counts = {}
     for s in statuses:
         counts[s["status"]] = counts.get(s["status"], 0) + 1
 
     print("\n── Sweep summary ──")
     for k, v in sorted(counts.items()):
-        print(f"  {k:20s}: {v}")
+        print(f"  {k:25s}: {v}")
 
     summary_path = out_dir / "sweep_summary.json"
     with open(summary_path, "w") as f:
         json.dump({"cases": statuses, "counts": counts}, f, indent=2)
-    print(f"\nSummary written to {summary_path}")
+    print(f"\nSummary → {summary_path}")
 
 
 if __name__ == "__main__":
