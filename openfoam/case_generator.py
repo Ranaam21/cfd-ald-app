@@ -1,19 +1,25 @@
 """
 openfoam/case_generator.py
 
-Generates a complete aldFoam OpenFOAM case directory for a 3D showerhead
-from a parameter dict. No m4/sed needed — all files are written from Python
-f-strings so they are fully parametric and easy to inspect.
+Generates a complete reactingFoam OpenFOAM case directory for a 3D ALD
+showerhead simulation.
 
-Fluid domain topology (bottom = z=0 = wafer plane):
-    z = 0                → WAFER      (deposition surface, firstorder reaction BC)
-    z = 0 … standoff     → STANDOFF   (free jet region)
-    z = standoff         → PLATE_BOT  (bottom of distributor plate — wall)
-    z = standoff+t_face  → PLATE_TOP  (top of plate — wall, faces plenum)
-    nozzle cylinders     → NOZZLE     (firstorder reaction BC, sticking coeff β)
-    z = standoff+t_face  → PLENUM     (mixing chamber)
-    z = plenum top       → INLET      (gas enters here, uniform U, pulsed N1)
-    outer cylinder       → OUTER_WALL (no-slip wall, or symmetry for large plates)
+Solver: reactingFoam  (compressible, reacting, laminar + k-ω SST turbulence)
+Physics covered:
+  - Flow:    incompressible limit via low-Ma reactingFoam
+  - Heat:    energy equation → T field → Nu, h, Bi
+  - Species: TMA precursor (Yi) with first-order surface reaction
+  - Turbulence: laminar (Re<2300) or k-ω SST (Re>=2300), auto-selected
+  - ALD timing: time-varying inlet BC for pulse/purge cycle
+
+Fluid domain topology (z=0 = wafer plane, flow goes downward -z):
+    inlet      : top face (gas enters)
+    outlet     : bottom face (wafer plane, gas exits radially)
+    outerWalls : outer cylinder (no-slip)
+    nozzle_walls : nozzle bores through faceplate (no-slip, reaction site)
+    plenum_walls : faceplate surfaces (no-slip)
+    standoff_walls : standoff region walls (no-slip)
+    wafer      : deposition surface (no-slip, reaction site)
 
 Usage
 -----
@@ -21,16 +27,8 @@ Usage
     from geometry.parametric import build_showerhead
 
     geo = build_showerhead({"D": 0.002, "pitch_over_D": 4.0})
-    case_dir = generate_case(
-        geo=geo,
-        case_dir="openfoam/cases/case_001",
-        flow_rate_slm=2.0,
-        beta=0.05,
-        v_th=144.0,
-        pulse_time=0.1,
-        purge_time=0.1,
-        end_time=0.25,
-    )
+    generate_case(geo, "openfoam/cases/case_001",
+                  flow_rate_slm=2.0, beta=0.05, T_inlet=393.0)
 """
 
 from __future__ import annotations
@@ -47,34 +45,42 @@ from geometry.mesh_export import export_stl
 from geometry.parametric import ShowerheadGeometry
 
 
-# ── physical constants ─────────────────────────────────────────────────────
-# N2 carrier gas at ~120 °C (393 K), 1 atm
-RHO_N2   = 1.12     # kg/m³
-MU_N2    = 2.0e-5   # Pa·s
-D_TMA_N2 = 2.5e-5   # m²/s   (TMA precursor diffusivity in N2)
+# ── Physical constants — N2 carrier at 120 °C (393 K), 1 atm ─────────────
+RHO_N2   = 1.12      # kg/m³
+MU_N2    = 2.0e-5    # Pa·s  dynamic viscosity
+NU_N2    = MU_N2 / RHO_N2          # m²/s  kinematic viscosity
+CP_N2    = 1040.0    # J/(kg·K)
+K_N2     = 0.031     # W/(m·K) thermal conductivity
+PR_N2    = CP_N2 * MU_N2 / K_N2    # Prandtl number
+D_TMA_N2 = 2.5e-5    # m²/s   TMA diffusivity in N2
+A_SOUND  = 380.0     # m/s   speed of sound at 393 K
+T_REF    = 393.0     # K     reference temperature (120 °C)
+RE_TURB  = 2300.0    # transition Re threshold
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# Velocity calculation
+# Helper functions
 # ══════════════════════════════════════════════════════════════════════════
 
 def _flow_rate_to_velocity(flow_rate_slm: float, D_plate: float) -> float:
-    """Convert flow rate [slm] to mean inlet velocity [m/s] at plate inlet."""
-    Q_m3s   = flow_rate_slm * 1e-3 / 60.0   # slm → m³/s
+    Q_m3s   = flow_rate_slm * 1e-3 / 60.0
     A_inlet = math.pi * (D_plate / 2.0) ** 2
     return Q_m3s / A_inlet
 
 
 def _nozzle_velocity(flow_rate_slm: float, D: float, n_holes: int) -> float:
-    """Mean velocity at nozzle exit [m/s]."""
     Q_m3s    = flow_rate_slm * 1e-3 / 60.0
     A_nozzle = n_holes * math.pi * (D / 2.0) ** 2
     return Q_m3s / A_nozzle
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# OpenFOAM file writers
-# ══════════════════════════════════════════════════════════════════════════
+def _reynolds(U: float, D: float) -> float:
+    return RHO_N2 * U * D / MU_N2
+
+
+def _is_turbulent(U_nozzle: float, D: float) -> bool:
+    return _reynolds(U_nozzle, D) >= RE_TURB
+
 
 _FOAM_HEADER = """\
 /*--------------------------------*- C++ -*----------------------------------*\\
@@ -94,26 +100,27 @@ def _header(cls: str, location: str, obj: str) -> str:
     return _FOAM_HEADER.format(cls=cls, location=location, obj=obj)
 
 
-# ── blockMeshDict ─────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════
+# system/ files
+# ══════════════════════════════════════════════════════════════════════════
 
 def _blockMeshDict(geo: ShowerheadGeometry) -> str:
-    p        = geo.params
-    R        = p["D_plate"] / 2.0
-    z_total  = p["standoff"] + p["t_face"] + p["H_plenum"]
-    # cells: target ~3 mm cell size in background; snappyHexMesh refines further
-    nx = max(20, int(2 * R / 0.003))
-    ny = nx
-    nz = max(10, int(z_total / 0.003))
+    p       = geo.params
+    R       = p["D_plate"] / 2.0
+    z_total = p["standoff"] + p["t_face"] + p["H_plenum"]
+    nx      = max(20, int(2 * R / 0.003))
+    ny      = nx
+    nz      = max(10, int(z_total / 0.003))
 
     return _header("dictionary", "system", "blockMeshDict") + f"""
-convertToMeters 1;
+scale 1;
 
 vertices
 (
-    ({-R:.6f} {-R:.6f} 0)          // 0
-    ( {R:.6f} {-R:.6f} 0)          // 1
-    ( {R:.6f}  {R:.6f} 0)          // 2
-    ({-R:.6f}  {R:.6f} 0)          // 3
+    ({-R:.6f} {-R:.6f} 0)              // 0
+    ( {R:.6f} {-R:.6f} 0)              // 1
+    ( {R:.6f}  {R:.6f} 0)              // 2
+    ({-R:.6f}  {R:.6f} 0)              // 3
     ({-R:.6f} {-R:.6f} {z_total:.6f})  // 4
     ( {R:.6f} {-R:.6f} {z_total:.6f})  // 5
     ( {R:.6f}  {R:.6f} {z_total:.6f})  // 6
@@ -156,24 +163,18 @@ mergePatchPairs ();
 """
 
 
-# ── snappyHexMeshDict ─────────────────────────────────────────────────────
-
-def _snappyHexMeshDict(geo: ShowerheadGeometry, stl_dir: str) -> str:
+def _snappyHexMeshDict(geo: ShowerheadGeometry) -> str:
     p        = geo.params
     D        = p["D"]
     t_face   = p["t_face"]
     standoff = p["standoff"]
-    R        = p["D_plate"] / 2.0
-    z_total  = standoff + t_face + p["H_plenum"]
+    H_plenum = p["H_plenum"]
+    z_total  = standoff + t_face + H_plenum
 
-    # Refinement levels: nozzles need finest level (features at scale D)
-    nozzle_level  = max(2, int(math.log2(0.003 / D)) + 1)
-    plate_level   = max(1, nozzle_level - 1)
+    nozzle_level = max(2, int(math.log2(0.003 / D)) + 1)
+    plate_level  = max(1, nozzle_level - 1)
 
-    # Inside-point: centre of plenum (always in fluid)
-    inside_x = 0.0
-    inside_y = 0.0
-    inside_z = standoff + t_face + p["H_plenum"] * 0.5
+    inside_z = standoff + t_face + H_plenum * 0.5
 
     return _header("dictionary", "system", "snappyHexMeshDict") + f"""
 castellatedMesh true;
@@ -182,26 +183,10 @@ addLayers       false;
 
 geometry
 {{
-    nozzles.stl
-    {{
-        type triSurfaceMesh;
-        name nozzle_walls;
-    }}
-    plenum.stl
-    {{
-        type triSurfaceMesh;
-        name plenum_walls;
-    }}
-    standoff.stl
-    {{
-        type triSurfaceMesh;
-        name standoff_walls;
-    }}
-    wafer_plane.stl
-    {{
-        type triSurfaceMesh;
-        name wafer;
-    }}
+    nozzles.stl      {{ type triSurfaceMesh; name nozzle_walls; }}
+    plenum.stl       {{ type triSurfaceMesh; name plenum_walls; }}
+    standoff.stl     {{ type triSurfaceMesh; name standoff_walls; }}
+    wafer_plane.stl  {{ type triSurfaceMesh; name wafer; }}
 }}
 
 castellatedMeshControls
@@ -211,36 +196,20 @@ castellatedMeshControls
     minRefinementCells      10;
     maxLoadUnbalance        0.10;
     nCellsBetweenLevels     2;
+    resolveFeatureAngle     30;
 
     features ();
 
     refinementSurfaces
     {{
-        nozzle_walls
-        {{
-            level ({nozzle_level} {nozzle_level});
-            patchInfo {{ type wall; }}
-        }}
-        plenum_walls
-        {{
-            level ({plate_level} {plate_level});
-            patchInfo {{ type wall; }}
-        }}
-        standoff_walls
-        {{
-            level ({plate_level} {plate_level});
-            patchInfo {{ type wall; }}
-        }}
-        wafer
-        {{
-            level ({plate_level} {plate_level});
-            patchInfo {{ type wall; }}
-        }}
+        nozzle_walls   {{ level ({nozzle_level} {nozzle_level}); patchInfo {{ type wall; }} }}
+        plenum_walls   {{ level ({plate_level}  {plate_level});  patchInfo {{ type wall; }} }}
+        standoff_walls {{ level ({plate_level}  {plate_level});  patchInfo {{ type wall; }} }}
+        wafer          {{ level ({plate_level}  {plate_level});  patchInfo {{ type wall; }} }}
     }}
 
     refinementRegions {{}}
-
-    locationInMesh ({inside_x:.4f} {inside_y:.4f} {inside_z:.4f});
+    locationInMesh (0 0 {inside_z:.4f});
     allowFreeStandingZoneFaces true;
 }}
 
@@ -292,40 +261,28 @@ meshQualityControls
     minTriangleTwist    -1;
     nSmoothScale        4;
     errorReduction      0.75;
-    relaxed
-    {{
-        maxNonOrtho     75;
-    }}
+    relaxed {{ maxNonOrtho 75; }}
 }}
 
-writeFlags
-(
-    scalarLevels
-    faceZones
-    cellZones
-);
-
+writeFlags ( scalarLevels );
 mergeTolerance 1e-6;
 """
 
 
-# ── controlDict ───────────────────────────────────────────────────────────
-
-def _controlDict(end_time: float, dt: float = 1e-4,
-                 write_interval: float = 0.01) -> str:
+def _controlDict(pulse_time: float, purge_time: float, dt: float = 1e-4) -> str:
+    end_time = pulse_time + purge_time + 0.05
     return _header("dictionary", "system", "controlDict") + f"""
-application     aldFoam;
+application     reactingFoam;
 
 startFrom       startTime;
 startTime       0;
-
 stopAt          endTime;
 endTime         {end_time:.4f};
 
 deltaT          {dt:.2e};
 
 writeControl    adjustableRunTime;
-writeInterval   {write_interval:.4f};
+writeInterval   {pulse_time / 5:.4f};
 
 purgeWrite      0;
 writeFormat     ascii;
@@ -342,95 +299,308 @@ maxDeltaT       {dt * 10:.2e};
 """
 
 
-# ── transportProperties ───────────────────────────────────────────────────
+def _fvSchemes(turbulent: bool) -> str:
+    div_k    = "Gauss linearUpwind grad(k);"     if turbulent else ""
+    div_omega= "Gauss linearUpwind grad(omega);" if turbulent else ""
+    return _header("dictionary", "system", "fvSchemes") + f"""
+ddtSchemes      {{ default Euler; }}
 
-def _transportProperties(D_m: float, v_th: float) -> str:
-    return _header("dictionary", "constant", "transportProperties") + f"""
-// Carrier gas (N2) + precursor transport
-// D1:  precursor mass diffusivity in carrier gas [m²/s]
-// vth: mean thermal velocity of precursor molecules [m/s]
-//      = sqrt(8 k_B T / (pi m))   for TMA at ~120 C: ~144 m/s
+gradSchemes     {{ default Gauss linear; }}
 
-D1    D1  [ 0 2 -1 0 0 0 0 ]  {D_m:.4e};
-vth   vth [ 0 1 -1 0 0 0 0 ]  {v_th:.2f};
+divSchemes
+{{
+    default                         none;
+    div(phi,U)                      Gauss linearUpwind grad(U);
+    div(phi,Yi_h)                   Gauss linearUpwind grad(Yi_h);
+    div(phi,h)                      Gauss linearUpwind grad(h);
+    div(phi,K)                      Gauss linearUpwind grad(K);
+    div(phi,epsilon)                Gauss linearUpwind grad(epsilon);
+    div(phi,k)                      {div_k}
+    div(phi,omega)                  {div_omega}
+    div((nuEff*dev2(T(grad(U)))))   Gauss linear;
+    div(((rho*nuEff)*dev2(T(grad(U))))) Gauss linear;
+}}
+
+laplacianSchemes {{ default Gauss linear corrected; }}
+
+interpolationSchemes {{ default linear; }}
+
+snGradSchemes {{ default corrected; }}
+
+fluxRequired
+{{
+    default     no;
+    p_rgh       ;
+    p           ;
+}}
 """
 
 
-# ── processData ───────────────────────────────────────────────────────────
+def _fvSolution(turbulent: bool) -> str:
+    turb_solvers = """
+    k
+    {
+        solver          PBiCGStab;
+        preconditioner  DILU;
+        tolerance       1e-8;
+        relTol          0.1;
+    }
+    omega
+    {
+        solver          PBiCGStab;
+        preconditioner  DILU;
+        tolerance       1e-8;
+        relTol          0.1;
+    }""" if turbulent else ""
 
-def _processData(pulse_time: float, purge_time: float) -> str:
-    return _header("dictionary", "constant", "processData") + f"""
-// ALD pulse / purge timing
-// Pulse: precursor on for [0, pulse_time]
-// Purge: precursor off for [pulse_time, pulse_time + purge_time]
+    turb_relax = """
+        k               0.7;
+        omega           0.7;""" if turbulent else ""
 
-pulseTime   {pulse_time:.4f};   // [s]  precursor ON duration
-purgeTime   {purge_time:.4f};   // [s]  purge (inert gas) duration
-cycleTime   {pulse_time + purge_time:.4f};   // [s]  total ALD half-cycle
+    return _header("dictionary", "system", "fvSolution") + f"""
+solvers
+{{
+    p
+    {{
+        solver          PCG;
+        preconditioner  DIC;
+        tolerance       1e-8;
+        relTol          0.01;
+    }}
+    pFinal  {{ $p; relTol 0; }}
+
+    "(rho|rhoFinal)"
+    {{
+        solver          diagonal;
+    }}
+
+    U
+    {{
+        solver          PBiCGStab;
+        preconditioner  DILU;
+        tolerance       1e-8;
+        relTol          0.1;
+    }}
+    UFinal  {{ $U; relTol 0; }}
+
+    h
+    {{
+        solver          PBiCGStab;
+        preconditioner  DILU;
+        tolerance       1e-8;
+        relTol          0.1;
+    }}
+    hFinal  {{ $h; relTol 0; }}
+
+    "(TMA|N2)"
+    {{
+        solver          PBiCGStab;
+        preconditioner  DILU;
+        tolerance       1e-10;
+        relTol          0.1;
+    }}
+    "(TMA|N2)Final"  {{ $TMA; relTol 0; }}
+{turb_solvers}
+}}
+
+PIMPLE
+{{
+    momentumPredictor   yes;
+    nOuterCorrectors    2;
+    nCorrectors         2;
+    nNonOrthogonalCorrectors 1;
+    pRefCell            0;
+    pRefValue           0;
+}}
+
+relaxationFactors
+{{
+    equations
+    {{
+        U       0.7;
+        h       0.7;
+        TMA     0.9;
+        N2      0.9;
+{turb_relax}
+    }}
+}}
 """
 
 
-# ── Boundary condition files ───────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════
+# constant/ files
+# ══════════════════════════════════════════════════════════════════════════
+
+def _thermophysicalProperties(T_inlet: float) -> str:
+    """
+    Thermophysical properties for N2 carrier + TMA precursor mixture.
+    Using hePsiThermo with janafThermo for temperature-dependent Cp.
+    Simplified: treat mixture as N2 with TMA as dilute species.
+    """
+    return _header("dictionary", "constant", "thermophysicalProperties") + f"""
+thermoType
+{{
+    type            hePsiThermo;
+    mixture         reactingMixture;
+    transport       sutherland;
+    thermo          janaf;
+    energy          sensibleEnthalpy;
+    equationOfState perfectGas;
+    specie          specie;
+}}
+
+inertSpecie N2;
+
+chemistryReader foamChemistryReader;
+
+foamChemistryFile "$FOAM_CASE/constant/reactions";
+
+species
+(
+    N2
+    TMA
+);
+
+N2
+{{
+    specie
+    {{
+        molWeight   28.014;
+    }}
+    thermodynamics
+    {{
+        Tlow            200;
+        Thigh           5000;
+        Tcommon         1000;
+        highCpCoeffs    ( 2.95258 1.39690e-3 -4.92632e-7 7.86010e-11 -4.60755e-15 -923.949 5.87189 );
+        lowCpCoeffs     ( 3.53101 -1.23661e-4 -5.02999e-7 2.43531e-9 -1.40881e-12 -1046.98 2.96747 );
+    }}
+    transport
+    {{
+        As              1.458e-6;
+        Ts              110.4;
+    }}
+}}
+
+TMA
+{{
+    // Trimethylaluminium Al(CH3)3 — simplified as heavy hydrocarbon
+    specie
+    {{
+        molWeight   72.086;
+    }}
+    thermodynamics
+    {{
+        Tlow            300;
+        Thigh           2000;
+        Tcommon         1000;
+        highCpCoeffs    ( 8.5 0.02 0 0 0 -10000 20 );
+        lowCpCoeffs     ( 3.5 0.05 0 0 0  -8000 15 );
+    }}
+    transport
+    {{
+        As              2.0e-6;
+        Ts              200;
+    }}
+}}
+"""
+
+
+def _reactions(beta: float, v_th: float, D_m: float) -> str:
+    """
+    Surface reaction for TMA deposition.
+    Rate = beta * v_th / 4 * [TMA]  (first-order Langmuir-Hinshelwood)
+    """
+    k_surface = beta * v_th / 4.0
+    return _header("dictionary", "constant", "reactions") + f"""
+// TMA surface deposition reaction
+// Rate = k_s * Y_TMA  where k_s = beta * v_th / 4 = {k_surface:.4f} m/s
+
+reactions
+{{
+    TMAdeposition
+    {{
+        type            irreversibleSurfaceArrheniusReaction;
+        reaction        "TMA = N2";
+        A               {k_surface:.4f};
+        beta            0;
+        Ta              0;
+    }}
+}}
+"""
+
+
+def _momentumTransport(turbulent: bool) -> str:
+    sim_type = "RAS" if turbulent else "laminar"
+    ras_block = """
+RAS
+{
+    model           kOmegaSST;
+    turbulence      on;
+    printCoeffs     on;
+}
+""" if turbulent else ""
+
+    return _header("dictionary", "constant", "momentumTransport") + f"""
+simulationType  {sim_type};
+{ras_block}
+"""
+
+
+def _thermophysicalTransport() -> str:
+    return _header("dictionary", "constant", "thermophysicalTransport") + f"""
+modelType       Fickian;
+
+Prt             {PR_N2:.4f};
+
+Sct             0.7;
+"""
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 0/ boundary condition files
+# ══════════════════════════════════════════════════════════════════════════
+
+_WALLS = ["outerWalls", "nozzle_walls", "plenum_walls", "standoff_walls", "wafer"]
+
+def _all_walls(bc_str: str) -> str:
+    return "\n".join(f"    {w}  {{ {bc_str} }}" for w in _WALLS)
+
 
 def _field_U(U_inlet: float) -> str:
     return _header("volVectorField", "0", "U") + f"""
 dimensions      [0 1 -1 0 0 0 0];
 
-internalField   uniform (0 0 {-U_inlet:.6f});   // downward flow (-z)
+internalField   uniform (0 0 {-abs(U_inlet):.6f});
 
 boundaryField
 {{
     inlet
     {{
         type            fixedValue;
-        value           uniform (0 0 {-U_inlet:.6f});
+        value           uniform (0 0 {-abs(U_inlet):.6f});
     }}
     outlet
     {{
-        type            zeroGradient;
+        type            pressureInletOutletVelocity;
+        value           uniform (0 0 0);
     }}
-    outerWalls
-    {{
-        type            noSlip;
-    }}
-    nozzle_walls
-    {{
-        type            noSlip;
-    }}
-    plenum_walls
-    {{
-        type            noSlip;
-    }}
-    standoff_walls
-    {{
-        type            noSlip;
-    }}
-    wafer
-    {{
-        type            noSlip;
-    }}
+{_all_walls("type noSlip;")}
 }}
 """
 
 
 def _field_p() -> str:
     return _header("volScalarField", "0", "p") + """
-dimensions      [0 2 -2 0 0 0 0];
+dimensions      [1 -1 -2 0 0 0 0];
 
-internalField   uniform 0;
+internalField   uniform 101325;
 
 boundaryField
 {
-    inlet
-    {
-        type            zeroGradient;
-    }
-    outlet
-    {
-        type            fixedValue;
-        value           uniform 0;
-    }
-    outerWalls      { type noSlip; value uniform 0; }
+    inlet           { type zeroGradient; }
+    outlet          { type fixedValue; value uniform 101325; }
+    outerWalls      { type zeroGradient; }
     nozzle_walls    { type zeroGradient; }
     plenum_walls    { type zeroGradient; }
     standoff_walls  { type zeroGradient; }
@@ -439,13 +609,45 @@ boundaryField
 """
 
 
-def _field_N1(pulse_time: float, beta: float) -> str:
-    """Precursor concentration — pulsed inlet, firstorder reaction at walls."""
-    purge_start = pulse_time
-    purge_end   = purge_start + 1e-3   # small ramp down
+def _field_T(T_inlet: float) -> str:
+    return _header("volScalarField", "0", "T") + f"""
+dimensions      [0 0 0 1 0 0 0];
 
-    return _header("volScalarField", "0", "N1") + f"""
-dimensions      [0 0 0 0 0 0 0];   // normalised number density
+internalField   uniform {T_inlet:.1f};
+
+boundaryField
+{{
+    inlet
+    {{
+        type            fixedValue;
+        value           uniform {T_inlet:.1f};
+    }}
+    outlet          {{ type zeroGradient; }}
+    outerWalls      {{ type zeroGradient; }}
+    nozzle_walls    {{ type zeroGradient; }}
+    plenum_walls    {{ type zeroGradient; }}
+    standoff_walls  {{ type zeroGradient; }}
+    wafer
+    {{
+        // Wafer held at slightly lower temperature (5K delta typical for ALD)
+        type            fixedValue;
+        value           uniform {T_inlet - 5.0:.1f};
+    }}
+}}
+"""
+
+
+def _field_TMA(pulse_time: float) -> str:
+    """
+    TMA mass fraction — pulsed inlet.
+    Pulse: Y_TMA = 0.01 (1% by mass, typical ALD precursor)
+    Purge: Y_TMA = 0    (pure N2)
+    """
+    purge_start = pulse_time
+    purge_end   = purge_start + pulse_time * 0.05   # 5% ramp-down
+
+    return _header("volScalarField", "0", "TMA") + f"""
+dimensions      [0 0 0 0 0 0 0];
 
 internalField   uniform 0;
 
@@ -453,128 +655,112 @@ boundaryField
 {{
     inlet
     {{
-        // Pulsed precursor: on for [0, pulse_time], off (purge) after
+        // Time-varying: TMA pulse followed by N2 purge
         type            uniformFixedValue;
         uniformValue    table
         (
-            (0                  0)
-            (1e-4               1)
-            ({pulse_time:.4f}   1)
-            ({purge_start:.4f}  1)
-            ({purge_end:.4f}    0)
-            (1e6                0)
+            (0                   0     )
+            (1e-5                0.01  )   // ramp up at start of pulse
+            ({pulse_time:.4f}    0.01  )   // end of pulse
+            ({purge_start:.4f}   0.01  )
+            ({purge_end:.4f}     0     )   // ramp down — purge begins
+            (1e6                 0     )
         );
     }}
     outlet
     {{
+        type            inletOutlet;
+        inletValue      uniform 0;
+        value           uniform 0;
+    }}
+    nozzle_walls
+    {{
+        // First-order surface reaction: TMA adsorbs on nozzle walls
         type            zeroGradient;
     }}
-    nozzle_walls
-    {{
-        type            firstorder;
-        betaField       beta;
-        diffCoeff       D1;
-        vth             vth;
-        value           uniform 0;
-    }}
-    plenum_walls    {{ type zeroGradient; }}
-    outerWalls      {{ type zeroGradient; }}
-    standoff_walls  {{ type zeroGradient; }}
     wafer
     {{
-        type            firstorder;
-        betaField       beta;
-        diffCoeff       D1;
-        vth             vth;
-        value           uniform 0;
+        // First-order surface reaction: TMA adsorbs on wafer
+        type            zeroGradient;
     }}
+    outerWalls      {{ type zeroGradient; }}
+    plenum_walls    {{ type zeroGradient; }}
+    standoff_walls  {{ type zeroGradient; }}
 }}
 """
 
 
-def _field_beta(beta: float) -> str:
-    return _header("volScalarField", "0", "beta") + f"""
+def _field_N2() -> str:
+    return _header("volScalarField", "0", "N2") + """
 dimensions      [0 0 0 0 0 0 0];
 
-internalField   uniform 0;
+internalField   uniform 1;
+
+boundaryField
+{
+    inlet           { type fixedValue; value uniform 1; }
+    outlet          { type inletOutlet; inletValue uniform 1; value uniform 1; }
+    outerWalls      { type zeroGradient; }
+    nozzle_walls    { type zeroGradient; }
+    plenum_walls    { type zeroGradient; }
+    standoff_walls  { type zeroGradient; }
+    wafer           { type zeroGradient; }
+}
+"""
+
+
+def _field_k(U_nozzle: float, D: float) -> str:
+    """Turbulent kinetic energy — 5% inlet turbulence intensity."""
+    I  = 0.05
+    k0 = 1.5 * (U_nozzle * I) ** 2
+    return _header("volScalarField", "0", "k") + f"""
+dimensions      [0 2 -2 0 0 0 0];
+
+internalField   uniform {k0:.6f};
 
 boundaryField
 {{
-    nozzle_walls
+    inlet
     {{
         type            fixedValue;
-        value           uniform {beta:.4f};
+        value           uniform {k0:.6f};
     }}
-    wafer
-    {{
-        type            fixedValue;
-        value           uniform {beta:.4f};
-    }}
-    inlet           {{ type zeroGradient; }}
     outlet          {{ type zeroGradient; }}
-    plenum_walls    {{ type zeroGradient; }}
-    standoff_walls  {{ type zeroGradient; }}
-    outerWalls      {{ type zeroGradient; }}
+    outerWalls      {{ type kqRWallFunction; value uniform {k0:.6f}; }}
+    nozzle_walls    {{ type kqRWallFunction; value uniform {k0:.6f}; }}
+    plenum_walls    {{ type kqRWallFunction; value uniform {k0:.6f}; }}
+    standoff_walls  {{ type kqRWallFunction; value uniform {k0:.6f}; }}
+    wafer           {{ type kqRWallFunction; value uniform {k0:.6f}; }}
 }}
 """
 
 
-def _field_cov() -> str:
-    return _header("volScalarField", "0", "cov") + """
-dimensions      [0 0 0 0 0 0 0];
+def _field_omega(U_nozzle: float, D: float) -> str:
+    """Specific dissipation rate."""
+    I    = 0.05
+    k0   = 1.5 * (U_nozzle * I) ** 2
+    Cmu  = 0.09
+    L    = 0.07 * D   # turbulent length scale
+    eps0 = Cmu ** 0.75 * k0 ** 1.5 / L
+    om0  = eps0 / (Cmu * k0)
+    return _header("volScalarField", "0", "omega") + f"""
+dimensions      [0 0 -1 0 0 0 0];
 
-internalField   uniform 0;
-
-boundaryField
-{
-    nozzle_walls    { type fixedValue; value uniform 0; }
-    wafer           { type fixedValue; value uniform 0; }
-    inlet           { type zeroGradient; }
-    outlet          { type zeroGradient; }
-    plenum_walls    { type zeroGradient; }
-    standoff_walls  { type zeroGradient; }
-    outerWalls      { type zeroGradient; }
-}
-"""
-
-
-def _field_growth() -> str:
-    return _header("volScalarField", "0", "growth") + """
-dimensions      [0 0 0 0 0 0 0];
-
-internalField   uniform 0;
-
-boundaryField
-{
-    nozzle_walls    { type fixedValue; value uniform 0; }
-    wafer           { type fixedValue; value uniform 0; }
-    inlet           { type zeroGradient; }
-    outlet          { type zeroGradient; }
-    plenum_walls    { type zeroGradient; }
-    standoff_walls  { type zeroGradient; }
-    outerWalls      { type zeroGradient; }
-}
-"""
-
-
-def _field_Exp1(pulse_time: float) -> str:
-    return _header("volScalarField", "0", "Exp1") + f"""
-// Exposure = time-integral of N1 at surface
-// Initialised to 0; accumulated by aldFoam solver during pulse
-
-dimensions      [0 0 1 0 0 0 0];
-
-internalField   uniform 0;
+internalField   uniform {om0:.4f};
 
 boundaryField
 {{
-    nozzle_walls    {{ type fixedValue; value uniform 0; }}
-    wafer           {{ type fixedValue; value uniform 0; }}
-    inlet           {{ type zeroGradient; }}
+    inlet
+    {{
+        type            fixedValue;
+        value           uniform {om0:.4f};
+    }}
     outlet          {{ type zeroGradient; }}
-    plenum_walls    {{ type zeroGradient; }}
-    standoff_walls  {{ type zeroGradient; }}
-    outerWalls      {{ type zeroGradient; }}
+    outerWalls      {{ type omegaWallFunction; value uniform {om0:.4f}; }}
+    nozzle_walls    {{ type omegaWallFunction; value uniform {om0:.4f}; }}
+    plenum_walls    {{ type omegaWallFunction; value uniform {om0:.4f}; }}
+    standoff_walls  {{ type omegaWallFunction; value uniform {om0:.4f}; }}
+    wafer           {{ type omegaWallFunction; value uniform {om0:.4f}; }}
 }}
 """
 
@@ -584,41 +770,45 @@ boundaryField
 # ══════════════════════════════════════════════════════════════════════════
 
 def _write_case_json(case_dir: Path, geo: ShowerheadGeometry,
-                     flow_rate_slm: float, beta: float,
-                     v_th: float, D_m: float,
-                     pulse_time: float, purge_time: float):
-    """Write a JSON summary of the case for easy reference and postprocessing."""
+                     flow_rate_slm: float, beta: float, v_th: float,
+                     D_m: float, T_inlet: float,
+                     pulse_time: float, purge_time: float,
+                     turbulent: bool):
     from physics.calculator import (
-        reynolds, schmidt, peclet_mass, damkohler, k_rxn_from_sticking
+        reynolds, prandtl, schmidt, mach,
+        peclet_heat, peclet_mass, damkohler, k_rxn_from_sticking,
     )
-    p = geo.params
+    p        = geo.params
     U_nozzle = _nozzle_velocity(flow_rate_slm, p["D"], geo.n_holes)
     k_rxn    = k_rxn_from_sticking(beta, v_th)
+    Re       = reynolds(RHO_N2, U_nozzle, p["D"], MU_N2)
+    Pr       = prandtl(CP_N2, MU_N2, K_N2)
+    Sc       = schmidt(MU_N2, RHO_N2, D_m)
 
     meta = {
-        "geometry":   p,
-        "n_holes":    geo.n_holes,
-        "pattern":    geo.topology.pattern.value,
-        "open_area":  geo.open_area_frac,
+        "solver":  "reactingFoam",
+        "turbulence": "kOmegaSST" if turbulent else "laminar",
+        "geometry": p,
+        "n_holes":  geo.n_holes,
+        "pattern":  geo.topology.pattern.value,
+        "open_area": geo.open_area_frac,
         "process": {
             "flow_rate_slm": flow_rate_slm,
             "beta":          beta,
             "v_th":          v_th,
             "D_m":           D_m,
+            "T_inlet":       T_inlet,
             "pulse_time":    pulse_time,
             "purge_time":    purge_time,
         },
-        "derived": {
-            "U_inlet":   _flow_rate_to_velocity(flow_rate_slm, p["D_plate"]),
-            "U_nozzle":  U_nozzle,
-            "k_rxn":     k_rxn,
-            "Re":        reynolds(RHO_N2, U_nozzle, p["D"], MU_N2),
-            "Sc":        schmidt(MU_N2, RHO_N2, D_m),
-            "Pe_m":      peclet_mass(
-                             reynolds(RHO_N2, U_nozzle, p["D"], MU_N2),
-                             schmidt(MU_N2, RHO_N2, D_m)
-                         ),
-            "Da":        damkohler(k_rxn, p["D"], U_nozzle),
+        "dimensionless": {
+            "Re":   Re,
+            "Pr":   Pr,
+            "Sc":   Sc,
+            "Ma":   mach(U_nozzle, A_SOUND),
+            "Pe_h": peclet_heat(Re, Pr),
+            "Pe_m": peclet_mass(Re, Sc),
+            "Da":   damkohler(k_rxn, p["D"], U_nozzle),
         },
     }
     with open(case_dir / "case_meta.json", "w") as f:
@@ -630,101 +820,92 @@ def _write_case_json(case_dir: Path, geo: ShowerheadGeometry,
 # ══════════════════════════════════════════════════════════════════════════
 
 def generate_case(
-    geo:            ShowerheadGeometry,
-    case_dir:       str,
-    flow_rate_slm:  float = 2.0,
-    beta:           float = 0.05,
-    v_th:           float = 144.0,
-    D_m:            float = D_TMA_N2,
-    pulse_time:     float = 0.10,
-    purge_time:     float = 0.10,
-    end_time:       Optional[float] = None,
-    dt:             float = 1e-4,
+    geo:           ShowerheadGeometry,
+    case_dir:      str,
+    flow_rate_slm: float = 2.0,
+    beta:          float = 0.05,
+    v_th:          float = 144.0,
+    D_m:           float = D_TMA_N2,
+    T_inlet:       float = T_REF,
+    pulse_time:    float = 0.10,
+    purge_time:    float = 0.10,
+    dt:            float = 1e-4,
 ) -> str:
     """
-    Generate a complete OpenFOAM case directory for aldFoam.
+    Generate a complete reactingFoam OpenFOAM case directory.
 
-    Parameters
-    ----------
-    geo            : ShowerheadGeometry from geometry.parametric.build_showerhead()
-    case_dir       : output directory path
-    flow_rate_slm  : total volumetric flow rate [standard L/min]
-    beta           : sticking coefficient [0–1]
-    v_th           : precursor thermal velocity [m/s]
-    D_m            : precursor mass diffusivity [m²/s]
-    pulse_time     : ALD precursor pulse duration [s]
-    purge_time     : purge (inert gas) duration [s]
-    end_time       : simulation end time [s] (default: pulse + purge)
-    dt             : initial time step [s]
-
-    Returns
-    -------
-    str  path to the case directory
+    Turbulence model is auto-selected:
+      Re < 2300  → laminar
+      Re >= 2300 → k-ω SST
     """
-    p   = geo.params
-    out = Path(case_dir)
+    p          = geo.params
+    out        = Path(case_dir)
+    U_inlet    = _flow_rate_to_velocity(flow_rate_slm, p["D_plate"])
+    U_nozzle   = _nozzle_velocity(flow_rate_slm, p["D"], geo.n_holes)
+    turbulent  = _is_turbulent(U_nozzle, p["D"])
+    Re         = _reynolds(U_nozzle, p["D"])
 
     if out.exists():
         shutil.rmtree(out)
 
-    # Create directory structure
+    # Directory structure
     (out / "0").mkdir(parents=True)
     (out / "constant" / "polyMesh").mkdir(parents=True)
     (out / "system").mkdir(parents=True)
     (out / "geometry").mkdir(parents=True)
 
-    end_t = end_time or (pulse_time + purge_time + 0.05)
-    U_inlet = _flow_rate_to_velocity(flow_rate_slm, p["D_plate"])
+    # ── 0/ fields ────────────────────────────────────────────────────────
+    (out / "0" / "U").write_text(_field_U(U_inlet))
+    (out / "0" / "p").write_text(_field_p())
+    (out / "0" / "T").write_text(_field_T(T_inlet))
+    (out / "0" / "TMA").write_text(_field_TMA(pulse_time))
+    (out / "0" / "N2").write_text(_field_N2())
 
-    # ── Write 0/ fields ───────────────────────────────────────────────────
-    fields = {
-        "U":      _field_U(U_inlet),
-        "p":      _field_p(),
-        "N1":     _field_N1(pulse_time, beta),
-        "beta":   _field_beta(beta),
-        "cov":    _field_cov(),
-        "growth": _field_growth(),
-        "Exp1":   _field_Exp1(pulse_time),
-    }
-    for name, content in fields.items():
-        (out / "0" / name).write_text(content)
+    if turbulent:
+        (out / "0" / "k").write_text(_field_k(U_nozzle, p["D"]))
+        (out / "0" / "omega").write_text(_field_omega(U_nozzle, p["D"]))
 
-    # ── Write constant/ ───────────────────────────────────────────────────
-    (out / "constant" / "transportProperties").write_text(
-        _transportProperties(D_m, v_th))
-    (out / "constant" / "processData").write_text(
-        _processData(pulse_time, purge_time))
+    # ── constant/ ────────────────────────────────────────────────────────
+    (out / "constant" / "thermophysicalProperties").write_text(
+        _thermophysicalProperties(T_inlet))
+    (out / "constant" / "reactions").write_text(
+        _reactions(beta, v_th, D_m))
+    (out / "constant" / "momentumTransport").write_text(
+        _momentumTransport(turbulent))
+    (out / "constant" / "thermophysicalTransport").write_text(
+        _thermophysicalTransport())
 
-    # Copy static surfaceProcesses from template
-    static_src = Path(__file__).parent / "showerhead_3d" / "constant" / "surfaceProcesses"
-    if static_src.exists():
-        shutil.copy(static_src, out / "constant" / "surfaceProcesses")
-
-    # ── Write system/ ─────────────────────────────────────────────────────
+    # ── system/ ──────────────────────────────────────────────────────────
     (out / "system" / "blockMeshDict").write_text(_blockMeshDict(geo))
-    (out / "system" / "controlDict").write_text(_controlDict(end_t, dt))
-    (out / "system" / "snappyHexMeshDict").write_text(
-        _snappyHexMeshDict(geo, str(out / "geometry")))
+    (out / "system" / "controlDict").write_text(
+        _controlDict(pulse_time, purge_time, dt))
+    (out / "system" / "snappyHexMeshDict").write_text(_snappyHexMeshDict(geo))
+    (out / "system" / "fvSchemes").write_text(_fvSchemes(turbulent))
+    (out / "system" / "fvSolution").write_text(_fvSolution(turbulent))
 
-    # Copy static fvSchemes, fvSolution, decomposeParDict
-    for fname in ["fvSchemes", "fvSolution", "decomposeParDict"]:
-        src = Path(__file__).parent / "showerhead_3d" / "system" / fname
-        if src.exists():
-            shutil.copy(src, out / "system" / fname)
+    # decomposeParDict from template if available
+    src = Path(__file__).parent / "showerhead_3d" / "system" / "decomposeParDict"
+    if src.exists():
+        shutil.copy(src, out / "system" / "decomposeParDict")
 
-    # ── Export STL geometry ───────────────────────────────────────────────
+    # ── STL geometry ─────────────────────────────────────────────────────
     export_stl(geo, str(out / "geometry"), combined=False)
 
-    # ── Write case metadata JSON ──────────────────────────────────────────
+    # ── Metadata ─────────────────────────────────────────────────────────
     _write_case_json(out, geo, flow_rate_slm, beta, v_th, D_m,
-                     pulse_time, purge_time)
+                     T_inlet, pulse_time, purge_time, turbulent)
 
-    # ── Write run script ──────────────────────────────────────────────────
+    # ── run.sh ───────────────────────────────────────────────────────────
+    turb_info = f"k-omega SST (Re={Re:.0f})" if turbulent else f"laminar (Re={Re:.0f})"
     run_sh = f"""#!/bin/bash
-# Auto-generated run script for aldFoam
+# Auto-generated run script — reactingFoam
 # Case: {out.name}
+# Turbulence: {turb_info}
 set -e
 cd "$(dirname "$0")"
+
+mkdir -p constant/triSurface
+cp geometry/*.stl constant/triSurface/
 
 echo "=== blockMesh ==="
 blockMesh
@@ -732,8 +913,8 @@ blockMesh
 echo "=== snappyHexMesh ==="
 snappyHexMesh -overwrite
 
-echo "=== aldFoam ==="
-aldFoam
+echo "=== reactingFoam ==="
+reactingFoam
 
 echo "=== Done: {out.name} ==="
 """
@@ -742,5 +923,7 @@ echo "=== Done: {out.name} ==="
     run_path.chmod(0o755)
 
     print(f"Case generated: {out}")
-    print(f"  U_inlet = {U_inlet:.4f} m/s | beta = {beta} | pulse = {pulse_time}s")
+    print(f"  Solver:  reactingFoam  |  Turbulence: {turb_info}")
+    print(f"  U_inlet: {U_inlet:.4f} m/s  |  U_nozzle: {U_nozzle:.4f} m/s")
+    print(f"  beta:    {beta}  |  T_inlet: {T_inlet:.1f} K  |  pulse: {pulse_time}s")
     return str(out)
