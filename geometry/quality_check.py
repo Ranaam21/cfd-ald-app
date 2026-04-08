@@ -80,7 +80,7 @@ class QualityReport:
 # ══════════════════════════════════════════════════════════════════════════
 
 # Limits
-OPEN_AREA_MIN  = 0.05   # 5 %
+OPEN_AREA_MIN  = 0.01   # 1 %  (sparse ALD arrays are valid; warn below 5%)
 OPEN_AREA_MAX  = 0.40   # 40 %
 PITCH_D_MIN    = 2.0
 T_FACE_MIN_M   = 3e-4   # 0.3 mm
@@ -96,8 +96,15 @@ def _check_open_area(geo: ShowerheadGeometry) -> List[QualityIssue]:
         issues.append(QualityIssue(
             check="open_area", level="error",
             message=f"Open area {oa*100:.1f}% < {OPEN_AREA_MIN*100:.0f}% min — "
-                    f"flow will be over-restricted. Increase D or reduce pitch.",
+                    f"flow will be severely restricted. Increase D or reduce pitch.",
             value=oa, limit=f">= {OPEN_AREA_MIN*100:.0f}%",
+        ))
+    elif oa < 0.05:
+        issues.append(QualityIssue(
+            check="open_area", level="warning",
+            message=f"Open area {oa*100:.1f}% < 5% — sparse array; "
+                    f"verify flow uniformity meets ALD requirements.",
+            value=oa, limit=">= 5% recommended",
         ))
     elif oa > OPEN_AREA_MAX:
         issues.append(QualityIssue(
