@@ -72,7 +72,7 @@ PROCESS_BASE = {
 }
 
 DOCKER_IMAGE = "opencfd/openfoam-default:latest"
-CASE_TIMEOUT = 7200   # 2 hours per case (generous)
+CASE_TIMEOUT = 14400  # 4 hours per case (high-Q cases need longer)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -256,16 +256,45 @@ def parse_args():
                    help="Print case list only, write nothing")
     p.add_argument("--generate_only", action="store_true",
                    help="Write case dirs but do not run OpenFOAM")
+    p.add_argument("--retry_failed",  action="store_true",
+                   help="Only re-run timeout/failed cases from sweep_summary.json")
     p.add_argument("--verbose",       action="store_true",
                    help="Stream Docker output to console")
     return p.parse_args()
 
 
+def _load_failed_cases(out_dir: Path) -> list:
+    """Read sweep_summary.json and return names of timeout/failed cases."""
+    summary_path = out_dir / "sweep_summary.json"
+    if not summary_path.exists():
+        print(f"ERROR: no sweep_summary.json in {out_dir}")
+        return []
+    data = json.load(open(summary_path))
+    failed = [c["name"] for c in data["cases"]
+              if c["status"] in ("timeout", "foam_failed", "error", "no_fields")]
+    print(f"Found {len(failed)} failed/timeout case(s) to retry:")
+    for name in failed:
+        print(f"  {name}")
+    return failed
+
+
 def main():
     args    = parse_args()
     out_dir = Path(args.out_dir)
-    cases   = build_case_list(args.max_cases)
 
+    # ── Retry-failed mode: skip generation, just re-run specific cases ────
+    if args.retry_failed:
+        failed_names = _load_failed_cases(out_dir)
+        if not failed_names:
+            print("Nothing to retry.")
+            return
+        case_dirs = [out_dir / name for name in failed_names
+                     if (out_dir / name).exists()]
+        run_results = run_sweep_parallel(case_dirs, n_parallel=args.n_parallel)
+        _write_summary(out_dir, run_results)
+        return
+
+    cases = build_case_list(args.max_cases)
     total = len(cases)
     print(f"Sweep : {total} cases  →  {out_dir}")
     print(f"Mode  : {'dry_run' if args.dry_run else ('generate_only' if args.generate_only else f'run ({args.n_parallel} parallel)')}")
