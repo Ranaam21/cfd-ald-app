@@ -78,6 +78,14 @@ def _reynolds(U: float, D: float) -> float:
     return RHO_N2 * U * D / MU_N2
 
 
+def _is_float_dir(name: str) -> bool:
+    try:
+        float(name)
+        return True
+    except ValueError:
+        return False
+
+
 def _is_turbulent(U_nozzle: float, D: float) -> bool:
     return _reynolds(U_nozzle, D) >= RE_TURB
 
@@ -851,6 +859,15 @@ def generate_case(
     Re         = _reynolds(U_nozzle, p["D"])
 
     if out.exists():
+        # Never wipe a case that already has solver output
+        _has_results = any(
+            True for d in out.iterdir()
+            if d.is_dir() and d.name not in ("0", "constant", "system", "geometry")
+            and _is_float_dir(d.name) and float(d.name) > 0
+            and (d / "U").exists()
+        )
+        if _has_results:
+            return  # Case already solved — do not overwrite
         shutil.rmtree(out)
 
     # Directory structure
