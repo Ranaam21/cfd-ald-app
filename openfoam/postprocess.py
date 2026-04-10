@@ -185,7 +185,12 @@ def build_output_array(fields: dict) -> np.ndarray:
     T   = fields.get("T",   np.zeros(N, dtype=np.float32))
     TMA = fields.get("TMA", np.zeros(N, dtype=np.float32))
 
-    return np.column_stack([Ux, Uy, Uz, p, T, TMA]).astype(np.float32)
+    # Trim all arrays to the smallest size (fluidfoam occasionally returns
+    # slightly different cell counts for vector vs scalar fields)
+    N = min(len(Ux), len(p), len(T), len(TMA), N)
+    return np.column_stack([
+        Ux[:N], Uy[:N], Uz[:N], p[:N], T[:N], TMA[:N]
+    ]).astype(np.float32)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -308,10 +313,15 @@ def write_hdf5(fields: dict, case_meta: dict, out_path: Path,
     geo = case_meta.get("geometry", {})
     N   = len(fields["x"])
 
+    output_fields  = build_output_array(fields)
+    N              = len(output_fields)   # canonical size after trimming
+    # Trim coords and node features to same N
+    fields["x"] = fields["x"][:N]
+    fields["y"] = fields["y"][:N]
+    fields["z"] = fields["z"][:N]
     coords         = np.column_stack([fields["x"], fields["y"], fields["z"]]).astype(np.float32)
     node_features  = build_node_features(fields, geo)
     global_feats   = build_global_features(case_meta)
-    output_fields  = build_output_array(fields)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(out_path, "w") as h5:
