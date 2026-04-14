@@ -23,6 +23,7 @@ HDF5_DIR    = DRIVE_BASE / 'showerhead_openfoam'
 CKPT        = DRIVE_BASE / 'checkpoints' / 'multihead' / 'multihead_final.pt'
 OPT_JSON    = DRIVE_BASE / 'checkpoints' / 'optimizer' / 'optimizer_results.json'
 GR_JSON     = DRIVE_BASE / 'checkpoints' / 'guardrail' / 'guardrail_results.json'
+GL_JSON     = DRIVE_BASE / 'checkpoints' / 'geometry_loop' / 'geometry_loop_results.json'
 DEVICE      = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 RHO_N2      = 1.145
 GLOBAL_KEYS = [
@@ -135,6 +136,16 @@ def load_json(path):
         return json.load(f)
 
 
+@st.cache_data
+def load_geom_loop():
+    """Load geometry_loop_results.json produced by 09_geometry_loop.ipynb."""
+    if not GL_JSON.exists():
+        return [], {}
+    with open(GL_JSON) as f:
+        data = json.load(f)
+    return data.get('ranked_designs', []), data
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 def nearest_case(cases, D_mm, pitch_D, Q_slm):
     pts = np.array([[c['D_mm'], c['pitch_over_D'], c['Q_slm']] for c in cases])
@@ -189,6 +200,70 @@ def run_inference(h5_path, model, norm, cfg):
     return coords, preds, dict(zip(GLOBAL_KEYS, gf))
 
 
+def run_inference_pcgm(d_mm, pitch_d, q_slm, model, norm, cfg):
+    """Run surrogate inference on a PCGM (Physics-Constrained Geometric Morphogenesis)
+    point cloud generated on-the-fly for the given design parameters.
+
+    Returns (coords [N,3], preds [N,6], global_dict, error_str).
+    On guardrail rejection returns (None, None, None, reason).
+    """
+    from geometry.pcgm import generate
+    from geometry.grammar import NozzlePattern
+
+    bounds = GuardrailBounds(Re=(0.1, 5000.0), Ma=(0.0, 0.3), Da=(1e-4, 200.0), Eu=(0.5, 1e9))
+    result = generate(
+        geo_params={'D': d_mm / 1000.0, 'pitch_over_D': pitch_d},
+        process_params={'flow_rate_slm': q_slm},
+        bounds=bounds,
+        pattern=NozzlePattern.HEX,
+        n_points=80_000,
+    )
+    if not result.accepted:
+        return None, None, None, result.reason
+
+    idata = result.inference_data
+    coords = idata['coords']           # [N, 3]  float32
+    nf     = idata['node_features']    # [N, 4]  float32
+    gf     = idata['global_features']  # [18]    float32
+
+    node_mean = np.array(norm['node_mean'], dtype=np.float32)
+    node_std  = np.array(norm['node_std'],  dtype=np.float32)
+    out_mean  = np.array(norm['out_mean'],  dtype=np.float32)
+    out_std   = np.array(norm['out_std'],   dtype=np.float32)
+
+    N = len(coords)
+    K = cfg['k_neighbors']
+    xi = np.concatenate([nf, np.tile(gf, (N, 1))], axis=1)
+
+    tree = cKDTree(coords)
+    _, idx = tree.query(coords, k=K + 1)
+    idx = idx[:, 1:]
+    src  = np.repeat(np.arange(N), K)
+    dst  = idx.flatten()
+    diff = coords[dst] - coords[src]
+    dist = np.linalg.norm(diff, axis=1, keepdims=True)
+    med  = float(np.median(dist)) + 1e-8
+    ef   = np.concatenate([diff / med, dist / med], axis=1).astype(np.float32)
+
+    x  = torch.from_numpy((xi - node_mean) / node_std).to(DEVICE)
+    ei = torch.tensor(np.stack([src, dst]), dtype=torch.long).to(DEVICE)
+    ea = torch.from_numpy(ef).to(DEVICE)
+
+    with torch.no_grad():
+        fp, hp, sp = model(x, ei, ea)
+    fp = fp.cpu().numpy()
+    hp = hp.cpu().numpy().flatten()
+    sp = sp.cpu().numpy().flatten()
+    del x, ei, ea
+
+    preds = np.zeros((N, 6), dtype=np.float32)
+    preds[:, :4] = fp * out_std[:4] + out_mean[:4]
+    preds[:, 4]  = hp * out_std[4]  + out_mean[4]
+    preds[:, 5]  = sp * out_std[5]  + out_mean[5]
+
+    return coords, preds, dict(zip(GLOBAL_KEYS, gf)), ''
+
+
 def scatter_slice(coords, field, title, z_frac=0.15, n=6000):
     z = coords[:, 2]
     thresh = z.min() + z_frac * (z.max() - z.min())
@@ -234,7 +309,9 @@ cases    = load_cases()
 opt_data = load_json(str(OPT_JSON))
 gr_data  = load_json(str(GR_JSON))
 
-tab_pred, tab_opt, tab_gr = st.tabs(['Predictions', 'Optimizer / Pareto', 'Guardrail Report'])
+tab_pred, tab_opt, tab_gr, tab_geo = st.tabs(
+    ['Predictions', 'Optimizer / Pareto', 'Guardrail Report', 'Pareto Designs']
+)
 
 # ── Tab 1: Predictions ─────────────────────────────────────────────────────
 with tab_pred:
@@ -377,3 +454,145 @@ with tab_gr:
 
         show = [c for c in ['name', 'passed', 'confidence', 'n_violations'] if c in df_gr.columns]
         st.dataframe(df_gr[show], use_container_width=True)
+
+# ── Tab 4: Pareto Designs ─────────────────────────────────────────────────
+with tab_geo:
+    designs, gl_meta = load_geom_loop()
+
+    if not designs:
+        st.warning(
+            'Run **09_geometry_loop.ipynb** first to generate '
+            '`geometry_loop_results.json`, then refresh this page.'
+        )
+        st.stop()
+
+    # ── Summary row ────────────────────────────────────────────────────────
+    w = gl_meta.get('score_weights', {'T_UI': 0.4, 'TMA_UI': 0.4, 'confidence': 0.2})
+    m1, m2, m3 = st.columns(3)
+    m1.metric('Ranked designs',            gl_meta.get('n_ranked', len(designs)))
+    m2.metric('Flagged for CFD (OpenFOAM reactingFoam)', gl_meta.get('n_cfd_flagged', '?'))
+    m3.metric(
+        'Score weights',
+        f"T_UI × {w.get('T_UI', 0.4)}  |  TMA_UI × {w.get('TMA_UI', 0.4)}  |  conf × {w.get('confidence', 0.2)}",
+    )
+
+    st.divider()
+
+    # ── Design cards (3 per row) ───────────────────────────────────────────
+    st.subheader('Design Cards')
+    N_COLS = 3
+    for row_start in range(0, len(designs), N_COLS):
+        cols = st.columns(N_COLS)
+        for ci, d in enumerate(designs[row_start: row_start + N_COLS]):
+            with cols[ci]:
+                with st.container(border=True):
+                    badge = '  `CFD`' if d.get('flag_for_cfd') else ''
+                    st.markdown(f"**Rank #{d['rank']}**{badge}")
+                    st.caption(
+                        f"D = {d['D_mm']:.1f} mm  |  pitch/D = {d['pitch_over_D']:.1f}  |  "
+                        f"Q = {d['Q_slm']:.1f} slm  |  n_holes = {d['n_holes']}  |  "
+                        f"pattern = {d.get('pattern', 'hex')}"
+                    )
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric('Score',  f"{d['score']:.3f}")
+                    c2.metric('T_UI',   f"{d['T_UI']:.3f}")
+                    c3.metric('TMA_UI', f"{d['TMA_UI']:.3f}")
+                    c4.metric('Eu',     f"{d['Eu']:.2f}")
+                    conf = d.get('confidence_post', d.get('confidence_pre', float('nan')))
+                    st.caption(
+                        f"Re = {d['Re']:.1f}  |  Da = {d['Da']:.2f}  |  conf = {conf:.2f}"
+                    )
+
+    st.divider()
+
+    # ── Side-by-side comparison ────────────────────────────────────────────
+    st.subheader('Side-by-Side Field Comparison')
+    st.caption(
+        'Select any two designs to regenerate their PCGM (Physics-Constrained Geometric '
+        'Morphogenesis) point clouds and run surrogate inference, then compare field slices.'
+    )
+
+    labels = [
+        f"Rank {d['rank']} — D={d['D_mm']:.1f}mm  pitch/D={d['pitch_over_D']:.1f}  Q={d['Q_slm']:.1f}slm"
+        for d in designs
+    ]
+    col_a, col_b, col_btn = st.columns([5, 5, 2])
+    sel_a    = col_a.selectbox('Design A', labels, index=0, key='cmp_a')
+    sel_b    = col_b.selectbox('Design B', labels, index=min(1, len(labels) - 1), key='cmp_b')
+    cmp_btn  = col_btn.button('Compare', type='primary', use_container_width=True)
+
+    if cmp_btn:
+        da = designs[labels.index(sel_a)]
+        db = designs[labels.index(sel_b)]
+
+        with st.spinner(f'PCGM + surrogate — {sel_a} …'):
+            coords_a, preds_a, gd_a, err_a = run_inference_pcgm(
+                da['D_mm'], da['pitch_over_D'], da['Q_slm'], model, norm, cfg,
+            )
+        with st.spinner(f'PCGM + surrogate — {sel_b} …'):
+            coords_b, preds_b, gd_b, err_b = run_inference_pcgm(
+                db['D_mm'], db['pitch_over_D'], db['Q_slm'], model, norm, cfg,
+            )
+
+        if coords_a is None:
+            st.error(f'Design A rejected by guardrail engine: {err_a}')
+        elif coords_b is None:
+            st.error(f'Design B rejected by guardrail engine: {err_b}')
+        else:
+            left, right = st.columns(2)
+            field_defs = [
+                (4, 'T [K]'),
+                (5, 'TMA'),
+                (3, 'p [m\u00b2/s\u00b2]'),
+                (None, '|U| [m/s]'),
+            ]
+
+            with left:
+                st.markdown(f"#### {sel_a}")
+                for idx, title in field_defs:
+                    f = np.linalg.norm(preds_a[:, :3], axis=1) if idx is None else preds_a[:, idx]
+                    st.plotly_chart(scatter_slice(coords_a, f, title), use_container_width=True)
+
+            with right:
+                st.markdown(f"#### {sel_b}")
+                for idx, title in field_defs:
+                    f = np.linalg.norm(preds_b[:, :3], axis=1) if idx is None else preds_b[:, idx]
+                    st.plotly_chart(scatter_slice(coords_b, f, title), use_container_width=True)
+
+            # Metric delta table
+            st.subheader('Metric comparison')
+            metric_rows = []
+            for key in ['score', 'T_UI', 'TMA_UI', 'Eu', 'Re', 'Da']:
+                va = da.get(key, float('nan'))
+                vb = db.get(key, float('nan'))
+                try:
+                    delta = f'{va - vb:+.4g}'
+                except TypeError:
+                    delta = '—'
+                metric_rows.append({
+                    'Metric':              key,
+                    f'A  (Rank {da["rank"]})': f'{va:.4g}',
+                    f'B  (Rank {db["rank"]})': f'{vb:.4g}',
+                    'Delta  (A − B)':      delta,
+                })
+            st.dataframe(
+                pd.DataFrame(metric_rows),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    st.divider()
+
+    # ── Full table ─────────────────────────────────────────────────────────
+    with st.expander('All ranked designs (full table)'):
+        want_cols = [
+            'rank', 'score', 'D_mm', 'pitch_over_D', 'Q_slm', 'n_holes',
+            'Re', 'Da', 'T_UI', 'TMA_UI', 'Eu',
+            'confidence_post', 'flag_for_cfd',
+        ]
+        avail = [c for c in want_cols if c in designs[0]]
+        st.dataframe(
+            pd.DataFrame(designs)[avail],
+            use_container_width=True,
+            hide_index=True,
+        )
