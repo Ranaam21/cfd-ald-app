@@ -5,7 +5,6 @@ os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
 import streamlit as st
 import numpy as np
-import h5py
 import json
 import torch
 import torch.nn as nn
@@ -21,7 +20,6 @@ from physics.calculator import euler
 
 # ── Constants ──────────────────────────────────────────────────────────────
 DRIVE_BASE  = Path('/content/drive/MyDrive/cfd-ald-app')
-HDF5_DIR    = DRIVE_BASE / 'showerhead_openfoam'
 CKPT        = DRIVE_BASE / 'checkpoints' / 'multihead' / 'multihead_final.pt'
 OPT_JSON    = DRIVE_BASE / 'checkpoints' / 'optimizer' / 'optimizer_results.json'
 GR_JSON     = DRIVE_BASE / 'checkpoints' / 'guardrail' / 'guardrail_results.json'
@@ -110,25 +108,6 @@ def load_model():
     return m, norm, cfg
 
 
-@st.cache_data(show_spinner='Loading case catalogue...')
-def load_cases():
-    rows = []
-    for h5 in sorted(HDF5_DIR.glob('case_*.h5')):
-        with h5py.File(h5, 'r') as f:
-            gf = f['inputs/global'][:]
-        gd = dict(zip(GLOBAL_KEYS, gf))
-        rows.append({
-            'path':         str(h5),
-            'name':         h5.stem,
-            'D_mm':         float(gd['D']) * 1e3,
-            'pitch_over_D': float(gd['pitch_over_D']),
-            'Q_slm':        float(gd['flow_rate_slm']),
-            'Re':           float(gd['Re']),
-            'Da':           float(gd['Da']),
-            'Ma':           float(gd['Ma']),
-        })
-    return rows
-
 
 @st.cache_data
 def load_json(path):
@@ -148,80 +127,36 @@ def load_geom_loop():
     return data.get('ranked_designs', []), data
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────
-def nearest_case(cases, D_mm, pitch_D, Q_slm):
-    pts = np.array([[c['D_mm'], c['pitch_over_D'], c['Q_slm']] for c in cases])
-    q   = np.array([D_mm, pitch_D, Q_slm])
-    lo, hi = pts.min(0), pts.max(0)
-    rng = np.clip(hi - lo, 1e-8, None)
-    dists = np.linalg.norm((pts - lo) / rng - (q - lo) / rng, axis=1)
-    return cases[int(np.argmin(dists))]
 
-
-def run_inference(h5_path, model, norm, cfg):
-    node_mean = np.array(norm['node_mean'], dtype=np.float32)
-    node_std  = np.array(norm['node_std'],  dtype=np.float32)
-    out_mean  = np.array(norm['out_mean'],  dtype=np.float32)
-    out_std   = np.array(norm['out_std'],   dtype=np.float32)
-
-    with h5py.File(h5_path, 'r') as f:
-        coords = f['coords'][:].astype(np.float32)
-        nf     = f['inputs/node_features'][:].astype(np.float32)
-        gf     = f['inputs/global'][:].astype(np.float32)
-
-    N = len(coords)
-    K = cfg['k_neighbors']
-    xi = np.concatenate([nf, np.tile(gf, (N, 1))], axis=1)
-
-    tree = cKDTree(coords)
-    _, idx = tree.query(coords, k=K + 1)
-    idx = idx[:, 1:]
-    src  = np.repeat(np.arange(N), K)
-    dst  = idx.flatten()
-    diff = coords[dst] - coords[src]
-    dist = np.linalg.norm(diff, axis=1, keepdims=True)
-    med  = float(np.median(dist)) + 1e-8
-    ef   = np.concatenate([diff / med, dist / med], axis=1).astype(np.float32)
-
-    x  = torch.from_numpy((xi - node_mean) / node_std).to(DEVICE)
-    ei = torch.tensor(np.stack([src, dst]), dtype=torch.long).to(DEVICE)
-    ea = torch.from_numpy(ef).to(DEVICE)
-
-    with torch.no_grad():
-        fp, hp, sp = model(x, ei, ea)
-    fp = fp.cpu().numpy()
-    hp = hp.cpu().numpy().flatten()
-    sp = sp.cpu().numpy().flatten()
-    del x, ei, ea
-
-    preds = np.zeros((N, 6), dtype=np.float32)
-    preds[:, :4] = fp * out_std[:4] + out_mean[:4]
-    preds[:, 4]  = hp * out_std[4]  + out_mean[4]
-    preds[:, 5]  = sp * out_std[5]  + out_mean[5]
-
-    return coords, preds, dict(zip(GLOBAL_KEYS, gf))
-
-
-def run_inference_pcgm(d_mm, pitch_d, q_slm, model, norm, cfg):
+def run_inference_pcgm(d_mm, pitch_d, q_slm, model, norm, cfg,
+                       H_plenum=0.020, t_face=0.003, standoff=0.020,
+                       bounds=None):
     """Run surrogate inference on a PCGM (Physics-Constrained Geometric Morphogenesis)
     point cloud generated on-the-fly for the given design parameters.
 
-    Returns (coords [N,3], preds [N,6], global_dict, error_str).
-    On guardrail rejection returns (None, None, None, reason).
+    Returns (coords [N,3], preds [N,6], global_dict, error_str, PCGMResult).
+    On guardrail rejection returns (None, None, None, reason, None).
     """
     from geometry.pcgm import generate
     from geometry.grammar import NozzlePattern
 
-    bounds = GuardrailBounds(Re=(0.1, 5000.0), Ma=(0.0, 0.3), Da=(1e-4, 200.0), Eu=(0.5, 1e9))
+    if bounds is None:
+        bounds = GuardrailBounds(Re=(0.1, 5000.0), Ma=(0.0, 0.3), Da=(1e-4, 200.0), Eu=(0.5, 1e9))
     result = generate(
-        geo_params={'D': d_mm / 1000.0, 'pitch_over_D': pitch_d},
+        geo_params={
+            'D':            d_mm / 1000.0,
+            'pitch_over_D': pitch_d,
+            'H_plenum':     H_plenum,
+            't_face':       t_face,
+            'standoff':     standoff,
+        },
         process_params={'flow_rate_slm': q_slm},
         bounds=bounds,
         pattern=NozzlePattern.HEX,
         n_points=80_000,
     )
     if not result.accepted:
-        return None, None, None, result.reason
+        return None, None, None, result.reason, None
 
     idata = result.inference_data
     coords = idata['coords']           # [N, 3]  float32
@@ -518,17 +453,28 @@ with st.sidebar:
     D_mm    = st.slider('Nozzle diameter D [mm]', 1.0, 3.0,  2.0, 0.25)
     pitch_D = st.slider('Pitch / D',              3.0, 6.0,  4.0, 0.5)
     Q_slm   = st.slider('Flow rate Q [slm]',      1.0, 10.0, 3.0, 0.5)
+    with st.expander('Geometry (advanced)'):
+        H_plenum_mm = st.slider('Plenum height H [mm]',      10.0, 40.0, 20.0, 1.0)
+        t_face_mm   = st.slider('Faceplate thickness t [mm]',  1.0,  6.0,  3.0, 0.5)
+        standoff_mm = st.slider('Standoff gap [mm]',           5.0, 40.0, 20.0, 1.0)
     run_btn = st.button('Run Prediction', type='primary', use_container_width=True)
     st.divider()
     with st.expander('Guardrail Bounds'):
-        re_max = st.number_input('Re max', value=5000.0,  step=500.0)
-        da_min = st.number_input('Da min', value=0.0001,  format='%g')
-        da_max = st.number_input('Da max', value=100.0,   step=10.0)
-        ma_max = st.number_input('Ma max', value=0.3,     step=0.05)
-        eu_max = st.number_input('Eu max', value=1.0e9,   format='%g')
+        re_max  = st.number_input('Re max',   value=5000.0,  step=500.0)
+        da_min  = st.number_input('Da min',   value=0.0001,  format='%g')
+        da_max  = st.number_input('Da max',   value=100.0,   step=10.0)
+        ma_max  = st.number_input('Ma max',   value=0.3,     step=0.05)
+        eu_max  = st.number_input('Eu max',   value=1.0e9,   format='%g')
+        st.divider()
+        pr_min  = st.number_input('Pr min',   value=0.5,     format='%g')
+        pr_max  = st.number_input('Pr max',   value=100.0,   step=10.0)
+        sc_min  = st.number_input('Sc min',   value=0.1,     format='%g')
+        sc_max  = st.number_input('Sc max',   value=10.0,    step=1.0)
+        peh_max = st.number_input('Pe_h max', value=1.0e5,   format='%g')
+        pem_max = st.number_input('Pe_m max', value=1.0e5,   format='%g')
+        st.caption('Nu / Bi / Sh checked only after CFD run (require heat-transfer coefficient h).')
 
 model, norm, cfg = load_model()
-cases    = load_cases()
 opt_data = load_json(str(OPT_JSON))
 gr_data  = load_json(str(GR_JSON))
 
@@ -539,65 +485,176 @@ tab_pred, tab_opt, tab_gr, tab_geo = st.tabs(
 # ── Tab 1: Predictions ─────────────────────────────────────────────────────
 with tab_pred:
     if run_btn:
-        case = nearest_case(cases, D_mm, pitch_D, Q_slm)
-        st.info(
-            f"Nearest: **{case['name']}** | "
-            f"D={case['D_mm']:.1f}mm  pitch/D={case['pitch_over_D']:.1f}  "
-            f"Q={case['Q_slm']:.1f}slm  Re={case['Re']:.0f}"
+        # Build guardrail bounds from sidebar inputs
+        pred_bounds = GuardrailBounds(
+            Re=(1.0,    re_max),
+            Ma=(0.0,    ma_max),
+            Da=(da_min, da_max),
+            Eu=(0.5,    eu_max),
+            Pr=(pr_min, pr_max),
+            Sc=(sc_min, sc_max),
+            Pe_h=(0.1,  peh_max),
+            Pe_m=(0.1,  pem_max),
         )
-        with st.spinner('Running surrogate (~30 s on GPU)...'):
-            coords, preds, gd = run_inference(case['path'], model, norm, cfg)
 
-        m1, m2, m3, m4 = st.columns(4)
+        with st.spinner('Generating PCGM point cloud + running surrogate...'):
+            coords, preds, gd, err, res = run_inference_pcgm(
+                D_mm, pitch_D, Q_slm, model, norm, cfg,
+                H_plenum=H_plenum_mm / 1000.0,
+                t_face=t_face_mm   / 1000.0,
+                standoff=standoff_mm / 1000.0,
+                bounds=pred_bounds,
+            )
+
+        if coords is None:
+            st.error(f'Guardrail engine rejected this design: {err}')
+            st.stop()
+
+        # ── Key metrics ────────────────────────────────────────────────────
+        Q_m3s = float(gd['flow_rate_slm']) * 1.667e-5
+        D_m   = float(gd['D'])
+        n_h   = max(int(round(float(gd['n_holes']))), 1)
+        V_noz = Q_m3s / (n_h * 3.14159 * (D_m / 2) ** 2)
+        dp    = float(abs(preds[:, 3].max() - preds[:, 3].min()))
+        Eu    = euler(max(dp, 1e-3), RHO_N2, max(V_noz, 1e-3))
+
+        # Uniformity index: 1 − CV in near-wafer band
+        def _ui(field, z, z_lo_frac, z_hi_frac):
+            z_lo = z.min() + z_lo_frac * (z.max() - z.min())
+            z_hi = z.min() + z_hi_frac * (z.max() - z.min())
+            m = (coords[:, 2] >= z_lo) & (coords[:, 2] <= z_hi)
+            if m.sum() < 10:
+                return float('nan')
+            return float(1.0 - field[m].std() / (abs(field[m].mean()) + 1e-12))
+
+        z = coords[:, 2]
+        T_UI   = _ui(preds[:, 4], z, 0.0,  0.10)
+        TMA_UI = _ui(preds[:, 5], z, 0.15, 0.55)
+
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
         m1.metric('T mean [K]',  f"{preds[:, 4].mean():.1f}")
         m2.metric('T range [K]', f"{preds[:, 4].max() - preds[:, 4].min():.2f}")
         m3.metric('TMA max',     f"{preds[:, 5].max():.3e}")
+        m4.metric('Eu',          f'{Eu:.2e}')
+        m5.metric('T_UI',        f'{T_UI:.3f}' if not np.isnan(T_UI) else 'n/a')
+        m6.metric('TMA_UI',      f'{TMA_UI:.3f}' if not np.isnan(TMA_UI) else 'n/a')
 
-        Q_m3s = float(gd['flow_rate_slm']) * 1.667e-5
-        D     = float(gd['D'])
-        n_h   = max(int(round(float(gd['n_holes']))), 1)
-        V_noz = Q_m3s / (n_h * 3.14159 * (D / 2) ** 2)
-        dp    = float(abs(preds[:, 3].max() - preds[:, 3].min()))
-        Eu    = euler(max(dp, 1e-3), RHO_N2, max(V_noz, 1e-3))
-        m4.metric('Eu', f'{Eu:.2e}')
-
-        with st.expander('Dimensionless numbers'):
-            dim_keys = ['Re', 'Pr', 'Sc', 'Ma', 'Da', 'Pe_h', 'Pe_m']
-            st.dataframe(
-                pd.DataFrame({'Value': {k: float(gd[k]) for k in dim_keys}}).style.format('{:.4g}')
-            )
-
+        # ── Field slices ───────────────────────────────────────────────────
         st.subheader('Field slices — bottom 15% of plenum')
         c1, c2 = st.columns(2)
-        c1.plotly_chart(scatter_slice(coords, preds[:, 4], 'T [K]'),  use_container_width=True)
-        c2.plotly_chart(scatter_slice(coords, preds[:, 5], 'TMA'),    use_container_width=True)
+        c1.plotly_chart(scatter_slice(coords, preds[:, 4], 'T [K]'),       use_container_width=True)
+        c2.plotly_chart(scatter_slice(coords, preds[:, 5], 'TMA'),          use_container_width=True)
         c3, c4 = st.columns(2)
-        c3.plotly_chart(scatter_slice(coords, preds[:, 3], 'p [m2/s2]'), use_container_width=True)
+        c3.plotly_chart(scatter_slice(coords, preds[:, 3], 'p [m²/s²]'),   use_container_width=True)
         U_mag = np.linalg.norm(preds[:, :3], axis=1)
-        c4.plotly_chart(scatter_slice(coords, U_mag, '|U| [m/s]'),    use_container_width=True)
+        c4.plotly_chart(scatter_slice(coords, U_mag, '|U| [m/s]'),          use_container_width=True)
 
+        # ── Geometry + field viewer ────────────────────────────────────────
+        st.subheader('Geometry + Field Viewer')
+        vis_col, ann_col = st.columns([3, 2])
+
+        with vis_col:
+            view_mode = st.radio(
+                'View', ['2D Engineering Drawing', '3D Fields'],
+                horizontal=True, key='pred_mode',
+            )
+            if view_mode == '2D Engineering Drawing':
+                st.plotly_chart(
+                    plot_2d_schematic(res.geometry.params, res.geometry.nozzle_xy,
+                                      res.dim_nums, {}),
+                    use_container_width=True,
+                )
+            else:
+                field_opts = ['T [K]', 'TMA', 'p [Pa]', '|U| [m/s]', 'Ux', 'Uy', 'Uz']
+                field_map  = {
+                    'T [K]': 4, 'TMA': 5, 'p [Pa]': 3,
+                    '|U| [m/s]': None, 'Ux': 0, 'Uy': 1, 'Uz': 2,
+                }
+                sel_field = st.selectbox('Field to display', field_opts, key='pred_field')
+                st.plotly_chart(
+                    plot_3d_field(coords, preds, field_map[sel_field], sel_field,
+                                  res.geometry.nozzle_xy),
+                    use_container_width=True,
+                )
+
+        with ann_col:
+            p_geo = res.geometry.params
+            dim   = res.dim_nums
+
+            st.markdown('#### Design Specification')
+            st.dataframe(pd.DataFrame({
+                'Parameter': [
+                    'D — nozzle diameter', 'pitch / D', 'Q — flow rate',
+                    'n_holes', 'open area %', 'H_plenum', 't_face',
+                    'standoff', 'D_plate', 'pattern',
+                ],
+                'Value': [
+                    f"{D_mm:.2f} mm",
+                    f"{pitch_D:.2f}",
+                    f"{Q_slm:.1f} slm",
+                    str(n_h),
+                    f"{float(gd.get('open_area_frac', 0)) * 100:.1f}%",
+                    f"{H_plenum_mm:.1f} mm",
+                    f"{t_face_mm:.1f} mm",
+                    f"{standoff_mm:.1f} mm",
+                    f"{p_geo.get('D_plate', 0.3) * 1e3:.0f} mm",
+                    'hex',
+                ],
+            }), use_container_width=True, hide_index=True)
+
+            st.markdown('#### Dimensionless Numbers')
+            _DIM_META = {
+                'Re':   ('Reynolds (ρVD/μ)',      'Flow regime'),
+                'Da':   ('Damköhler (k_rxn·L/V)', 'Reaction vs transport'),
+                'Ma':   ('Mach (V/a)',              'Compressibility'),
+                'Eu':   ('Euler (Δp/½ρV²)',         'Pressure drop'),
+                'Pr':   ('Prandtl (cp·μ/k)',        'Heat BL scaling'),
+                'Sc':   ('Schmidt (μ/ρD_m)',        'Diffusion scaling'),
+                'Pe_h': ('Péclet heat (Re·Pr)',     'Advection vs diffusion'),
+                'Pe_m': ('Péclet mass (Re·Sc)',     'Advection vs diffusion'),
+            }
+            all_dim = dict(dim)
+            all_dim['Eu'] = Eu
+            st.dataframe(pd.DataFrame([
+                {'Symbol': sym,
+                 'Formula': meta[0],
+                 'Value': f"{all_dim.get(sym, float('nan')):.4g}",
+                 'Guards against': meta[1]}
+                for sym, meta in _DIM_META.items()
+            ]), use_container_width=True, hide_index=True)
+
+            st.markdown('#### Performance Metrics')
+            st.dataframe(pd.DataFrame([
+                ('T_UI',    f'{T_UI:.4f}'   if not np.isnan(T_UI)   else 'n/a', '1−CV(T) near wafer'),
+                ('TMA_UI',  f'{TMA_UI:.4f}' if not np.isnan(TMA_UI) else 'n/a', '1−CV(TMA) mid-plenum'),
+                ('T mean',  f'{preds[:, 4].mean():.1f} K', 'Mean temperature'),
+                ('T range', f'{preds[:, 4].max() - preds[:, 4].min():.2f} K', 'Max − min T'),
+                ('TMA max', f'{preds[:, 5].max():.3e}', 'Peak TMA mass fraction'),
+                ('Eu',      f'{Eu:.4g}', 'Euler number Δp/(½ρV²)'),
+                ('n_holes', str(n_h), 'Number of nozzle holes'),
+            ], columns=['Metric', 'Value', 'Description']),
+            use_container_width=True, hide_index=True)
+
+        # ── Guardrail check ────────────────────────────────────────────────
         st.subheader('Guardrail check')
-        bounds = GuardrailBounds(
-            Re=(1.0, re_max), Ma=(0.0, ma_max), Da=(da_min, da_max), Eu=(0.5, eu_max),
-        )
-        engine   = GuardrailEngine(bounds)
-        dim_vals = {k: float(gd[k]) for k in ['Re', 'Pr', 'Sc', 'Ma', 'Da', 'Pe_h', 'Pe_m']}
+        engine   = GuardrailEngine(pred_bounds)
+        dim_vals = dict(res.dim_nums)
         dim_vals['Eu'] = Eu
-        result = engine.check(dim_vals)
+        gr_result = engine.check(dim_vals)
 
-        if result.passed:
-            st.success(f'PASS  confidence {result.confidence:.3f}')
+        if gr_result.passed:
+            st.success(f'PASS  confidence {gr_result.confidence:.3f}')
         else:
-            st.error(f'FAIL  confidence {result.confidence:.3f}')
-            for v in result.violations:
+            st.error(f'FAIL  confidence {gr_result.confidence:.3f}')
+            for v in gr_result.violations:
                 st.warning(
                     f'**{v.symbol}** = {v.value:.4g}  '
                     f'(allowed [{v.lo:.4g}, {v.hi:.4g}])  {v.message}'
                 )
-        for flag in result.special_flags:
+        for flag in gr_result.special_flags:
             st.info(f'Flag: {flag}')
-        for rec in result.recommendations:
-            st.caption(f'-> {rec}')
+        for rec in gr_result.recommendations:
+            st.caption(f'→ {rec}')
     else:
         st.info('Set parameters in the sidebar and click **Run Prediction**.')
 
