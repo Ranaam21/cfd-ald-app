@@ -458,29 +458,69 @@ st.caption(f'MultiHeadMGN  |  Device: {DEVICE}  |  BoTorch Pareto optimiser')
 
 with st.sidebar:
     st.header('Design Parameters')
-    D_mm    = st.slider('Nozzle diameter D [mm]', 1.0, 3.0,  2.0, 0.25)
-    pitch_D = st.slider('Pitch / D',              3.0, 6.0,  4.0, 0.5)
-    Q_slm   = st.slider('Flow rate Q [slm]',      1.0, 10.0, 3.0, 0.5)
+    D_mm    = st.slider('Nozzle diameter D [mm]', 1.0, 3.0,  2.0, 0.25,
+                        help='Diameter of each nozzle/hole in the showerhead faceplate. '
+                             'Smaller D → higher jet velocity, more holes for same open area.')
+    pitch_D = st.slider('Pitch / D',              3.0, 6.0,  4.0, 0.5,
+                        help='Centre-to-centre hole spacing divided by hole diameter. '
+                             'Higher pitch/D → fewer holes, lower open area fraction.')
+    Q_slm   = st.slider('Flow rate Q [slm]',      1.0, 10.0, 3.0, 0.5,
+                        help='Total gas volumetric flow rate in Standard Litres per Minute (slm). '
+                             '1 slm = 1.667×10⁻⁵ m³/s at standard conditions (0°C, 1 atm).')
     with st.expander('Geometry (advanced)'):
-        H_plenum_mm = st.slider('Plenum height H [mm]',      10.0, 40.0, 20.0, 1.0)
-        t_face_mm   = st.slider('Faceplate thickness t [mm]',  1.0,  6.0,  3.0, 0.5)
-        standoff_mm = st.slider('Standoff gap [mm]',           5.0, 40.0, 20.0, 1.0)
+        H_plenum_mm = st.slider('Plenum height H [mm]',      10.0, 40.0, 20.0, 1.0,
+                                help='Height of the gas distribution plenum (the chamber above the faceplate). '
+                                     'Taller plenum → more residence time, more uniform pressure distribution.')
+        t_face_mm   = st.slider('Faceplate thickness t [mm]',  1.0,  6.0,  3.0, 0.5,
+                                help='Thickness of the showerhead faceplate. '
+                                     'Thicker faceplate → higher aspect-ratio nozzle channels → more uniform jet velocity.')
+        standoff_mm = st.slider('Standoff gap [mm]',           5.0, 40.0, 20.0, 1.0,
+                                help='Gap between the faceplate bottom surface and the wafer top surface. '
+                                     'Larger standoff → jets spread more before hitting wafer → better uniformity but lower concentration.')
     run_btn = st.button('Run Prediction', type='primary', use_container_width=True)
     st.divider()
     with st.expander('Guardrail Bounds'):
-        re_max  = st.number_input('Re max',   value=5000.0,  step=500.0)
-        da_min  = st.number_input('Da min',   value=0.0001,  format='%g')
-        da_max  = st.number_input('Da max',   value=100.0,   step=10.0)
-        ma_max  = st.number_input('Ma max',   value=0.3,     step=0.05)
-        eu_max  = st.number_input('Eu max',   value=1.0e9,   format='%g')
+        st.caption('Predictions outside these ranges trigger physics warnings.')
+        re_max  = st.number_input('Re max',   value=5000.0,  step=500.0,
+                                  help='Reynolds number Re = ρVD/μ — ratio of inertial to viscous forces. '
+                                       'Re < 2300: laminar. Re > 4000: turbulent. '
+                                       'Surrogate trained on laminar data; high Re predictions are extrapolations.')
+        da_min  = st.number_input('Da min',   value=0.0001,  format='%g',
+                                  help='Damköhler number Da = k_rxn·L/V — ratio of surface reaction rate to convective transport rate. '
+                                       'Da >> 1: transport-limited (precursor depletes before reacting). '
+                                       'Da << 1: reaction-limited (ideal ALD self-limiting regime).')
+        da_max  = st.number_input('Da max',   value=100.0,   step=10.0,
+                                  help='Upper Da limit. Very high Da means the precursor is consumed too fast '
+                                       'before reaching the wafer centre → non-uniform deposition.')
+        ma_max  = st.number_input('Ma max',   value=0.3,     step=0.05,
+                                  help='Mach number Ma = V/a — ratio of flow velocity to speed of sound. '
+                                       'Ma < 0.3: incompressible assumption valid. '
+                                       'Ma > 0.3: compressibility effects appear; surrogate accuracy degrades.')
+        eu_max  = st.number_input('Eu max',   value=1.0e9,   format='%g',
+                                  help='Euler number Eu = Δp / (½ρV²) — dimensionless pressure drop across the showerhead. '
+                                       'High Eu = large pressure penalty; may indicate flow restriction or choking.')
         st.divider()
-        pr_min  = st.number_input('Pr min',   value=0.5,     format='%g')
-        pr_max  = st.number_input('Pr max',   value=100.0,   step=10.0)
-        sc_min  = st.number_input('Sc min',   value=0.1,     format='%g')
-        sc_max  = st.number_input('Sc max',   value=10.0,    step=1.0)
-        peh_max = st.number_input('Pe_h max', value=1.0e5,   format='%g')
-        pem_max = st.number_input('Pe_m max', value=1.0e5,   format='%g')
-        st.caption('Nu / Bi / Sh checked only after CFD run (require heat-transfer coefficient h).')
+        pr_min  = st.number_input('Pr min',   value=0.5,     format='%g',
+                                  help='Prandtl number Pr = cp·μ/k — ratio of momentum diffusivity to thermal diffusivity. '
+                                       'Pr ≈ 0.71 for N₂ at process temperature. Governs thermal boundary layer thickness.')
+        pr_max  = st.number_input('Pr max',   value=100.0,   step=10.0,
+                                  help='Upper Pr bound. High Pr fluids have thin thermal BLs. '
+                                       'N₂ carrier gas stays near 0.71; large deviation signals wrong fluid properties.')
+        sc_min  = st.number_input('Sc min',   value=0.1,     format='%g',
+                                  help='Schmidt number Sc = μ/(ρ·D_m) — ratio of momentum diffusivity to mass diffusivity. '
+                                       'Governs the concentration boundary layer. Sc > 1 means mass diffuses slower than momentum.')
+        sc_max  = st.number_input('Sc max',   value=10.0,    step=1.0,
+                                  help='Upper Sc bound. TMA in N₂ has Sc ≈ 1–3. '
+                                       'Values outside this range suggest incorrect diffusivity D_m.')
+        peh_max = st.number_input('Pe_h max', value=1.0e5,   format='%g',
+                                  help='Péclet number (heat) Pe_h = Re·Pr — ratio of advective to diffusive heat transport. '
+                                       'High Pe_h: convection dominates, thin thermal BL. '
+                                       'Low Pe_h: diffusion smooths temperature gradients.')
+        pem_max = st.number_input('Pe_m max', value=1.0e5,   format='%g',
+                                  help='Péclet number (mass) Pe_m = Re·Sc — ratio of advective to diffusive mass transport. '
+                                       'High Pe_m: convection dominates species transport. '
+                                       'Low Pe_m: diffusion spreads precursor uniformly (favourable for ALD).')
+        st.caption('Nu (Nusselt), Bi (Biot), Sh (Sherwood) checked only after CFD run — require heat-transfer coefficient h from OpenFOAM T field.')
 
 model, norm, cfg = load_model()
 opt_data = load_json(str(OPT_JSON))
@@ -540,12 +580,25 @@ with tab_pred:
         TMA_UI = _ui(preds[:, 5], z, 0.15, 0.55)
 
         m1, m2, m3, m4, m5, m6 = st.columns(6)
-        m1.metric('T mean [K]',  f"{preds[:, 4].mean():.1f}")
-        m2.metric('T range [K]', f"{preds[:, 4].max() - preds[:, 4].min():.2f}")
-        m3.metric('TMA max',     f"{preds[:, 5].max():.3e}")
-        m4.metric('Eu',          f'{Eu:.2e}')
-        m5.metric('T_UI',        f'{T_UI:.3f}' if not np.isnan(T_UI) else 'n/a')
-        m6.metric('TMA_UI',      f'{TMA_UI:.3f}' if not np.isnan(TMA_UI) else 'n/a')
+        m1.metric('T mean [K]',  f"{preds[:, 4].mean():.1f}",
+                  help='Mean gas temperature across the plenum point cloud [Kelvin]. '
+                       'Target: close to process temperature (typically 150–400°C for ALD).')
+        m2.metric('T range [K]', f"{preds[:, 4].max() - preds[:, 4].min():.2f}",
+                  help='Temperature spread = max(T) − min(T) [Kelvin]. '
+                       'Lower is better — large range means hot/cold zones on the wafer.')
+        m3.metric('TMA max',     f"{preds[:, 5].max():.3e}",
+                  help='Peak TMA (trimethylaluminium, Al(CH₃)₃) mass fraction in the plenum. '
+                       'TMA is the precursor gas for Al₂O₃ ALD. Higher near inlets, should spread uniformly.')
+        m4.metric('Eu',          f'{Eu:.2e}',
+                  help='Euler number = Δp / (½ρV²) — dimensionless pressure drop across the showerhead. '
+                       'Computed from surrogate pressure field. High Eu = large pumping penalty.')
+        m5.metric('T_UI',        f'{T_UI:.3f}' if not np.isnan(T_UI) else 'n/a',
+                  help='Temperature Uniformity Index = 1 − CV(T) in near-wafer band (bottom 10% of plenum). '
+                       'CV = std/mean. Range: (−∞, 1]. Higher is better. >0.95 is excellent.')
+        m6.metric('TMA_UI',      f'{TMA_UI:.3f}' if not np.isnan(TMA_UI) else 'n/a',
+                  help='TMA Uniformity Index = 1 − CV(TMA) in mid-plenum band (15–55% of plenum height). '
+                       'Negative value means std > mean (highly non-uniform precursor distribution). '
+                       'Target: as close to 1.0 as possible.')
 
         # ── Field slices ───────────────────────────────────────────────────
         st.subheader('Field slices — bottom 15% of plenum')
@@ -783,16 +836,28 @@ with tab_geo:
                     )
                     r1c1, r1c2 = st.columns(2)
                     r2c1, r2c2 = st.columns(2)
-                    r1c1.metric('Score',  f"{d['score']:.3f}")
-                    r1c2.metric('T_UI',   f"{d['T_UI']:.3f}")
+                    r1c1.metric('Score',  f"{d['score']:.3f}",
+                                help='Composite optimisation score = 0.4×T_UI + 0.4×TMA_UI + 0.2×confidence. '
+                                     'Range [0, 1]. Higher is better.')
+                    r1c2.metric('T_UI',   f"{d['T_UI']:.3f}",
+                                help='Temperature Uniformity Index = 1 − CV(T) near wafer. '
+                                     'CV = std/mean. Range (−∞, 1]. >0.95 = excellent uniformity.')
                     tma_ui = d['TMA_UI']
-                    r2c1.metric('TMA_UI', f"{tma_ui:.3f}", help='Negative = non-uniform TMA (std > mean)')
+                    r2c1.metric('TMA_UI', f"{tma_ui:.3f}",
+                                help='TMA (trimethylaluminium precursor) Uniformity Index = 1 − CV(TMA). '
+                                     'Negative means std > mean — precursor is highly non-uniform. '
+                                     'Target: maximise toward 1.0.')
                     eu = d['Eu']
                     eu_str = f"{eu/1e3:.1f}k" if eu >= 1000 else f"{eu:.2f}"
-                    r2c2.metric('Eu', eu_str, help='Euler number Δp/(½ρV²)')
+                    r2c2.metric('Eu', eu_str,
+                                help='Euler number Eu = Δp/(½ρV²) — dimensionless pressure drop. '
+                                     'Lower Eu = less pumping power needed. '
+                                     'Very high Eu indicates flow restriction or near-choked conditions.')
                     conf = d.get('confidence_post', d.get('confidence_pre', float('nan')))
                     st.caption(
-                        f"Re = {d['Re']:.1f}  |  Da = {d['Da']:.2f}  |  conf = {conf:.2f}"
+                        f"Re = {d['Re']:.1f}  ·  Reynolds number ρVD/μ (flow regime)  |  "
+                        f"Da = {d['Da']:.2f}  ·  Damköhler k_rxn·L/V (reaction vs transport)  |  "
+                        f"conf = {conf:.2f}"
                     )
 
     st.divider()
