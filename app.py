@@ -522,6 +522,45 @@ with st.sidebar:
                                        'Low Pe_m: diffusion spreads precursor uniformly (favourable for ALD).')
         st.caption('Nu (Nusselt), Bi (Biot), Sh (Sherwood) checked only after CFD run — require heat-transfer coefficient h from OpenFOAM T field.')
 
+    st.divider()
+    with st.expander('Physics Reference'):
+        st.markdown('''
+**Dimensionless Numbers**
+
+| Symbol | Full name | Formula | What it tells you |
+|--------|-----------|---------|-------------------|
+| **Re** | Reynolds | ρVD/μ | Flow regime: <2300 laminar, >4000 turbulent |
+| **Da** | Damköhler | k_rxn·L/V | <1 reaction-limited (ideal ALD), >1 transport-limited |
+| **Ma** | Mach | V/a | <0.3 incompressible, >0.3 compressibility kicks in |
+| **Eu** | Euler | Δp/(½ρV²) | Pressure drop penalty; lower = less pumping power |
+| **Pr** | Prandtl | cpμ/k | Heat BL thickness; ≈0.71 for N₂ |
+| **Sc** | Schmidt | μ/(ρD_m) | Mass diffusion vs momentum; ≈1–3 for TMA in N₂ |
+| **Pe_h** | Péclet (heat) | Re·Pr | Advection vs diffusion of heat |
+| **Pe_m** | Péclet (mass) | Re·Sc | Advection vs diffusion of precursor |
+| **Nu** | Nusselt | hL/k | Convective vs conductive heat transfer (CFD only) |
+| **Bi** | Biot | hL/k_s | Surface vs internal temperature gradient (CFD only) |
+| **Sh** | Sherwood | k_m L/D_m | Convective vs diffusive mass transfer (CFD only) |
+
+**Performance Metrics**
+
+| Symbol | Meaning |
+|--------|---------|
+| **T_UI** | Temperature Uniformity Index = 1 − CV(T). Range (−∞,1]. >0.95 = excellent |
+| **TMA_UI** | TMA precursor Uniformity Index = 1 − CV(TMA). Negative = std > mean (non-uniform) |
+| **Score** | Composite = 0.4×T_UI + 0.4×TMA_UI + 0.2×confidence |
+| **conf** | Guardrail confidence [0→1]. 1.0 = all physics checks passed |
+
+**Key terms**
+
+- **ALD** — Atomic Layer Deposition: self-limiting surface reaction, deposits one atomic layer per cycle
+- **TMA** — Trimethylaluminium Al(CH₃)₃, precursor gas for Al₂O₃ ALD
+- **PCGM** — Physics-Constrained Geometric Morphogenesis: parametric showerhead geometry generator
+- **slm** — Standard Litres per Minute (gas flow at 0°C, 1 atm)
+- **CV** — Coefficient of Variation = std/mean (dimensionless spread)
+- **plenum** — The gas distribution chamber above the faceplate
+- **standoff** — Gap between faceplate and wafer surface
+''')
+
 model, norm, cfg = load_model()
 opt_data = load_json(str(OPT_JSON))
 gr_data  = load_json(str(GR_JSON))
