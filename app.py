@@ -595,168 +595,189 @@ with tab_pred:
 
         if coords is None:
             st.error(f'Guardrail engine rejected this design: {err}')
+            st.session_state.pop('pred_results', None)
             st.stop()
 
-        # ── Key metrics ────────────────────────────────────────────────────
-        Q_m3s = float(gd['flow_rate_slm']) * 1.667e-5
-        D_m   = float(gd['D'])
-        n_h   = max(int(round(float(gd['n_holes']))), 1)
-        V_noz = Q_m3s / (n_h * 3.14159 * (D_m / 2) ** 2)
-        dp    = float(abs(preds[:, 3].max() - preds[:, 3].min()))
-        Eu    = euler(max(dp, 1e-3), RHO_N2, max(V_noz, 1e-3))
+        # Persist results so radio/selectbox interactions don't wipe them
+        Q_m3s_run = float(gd['flow_rate_slm']) * 1.667e-5
+        D_m_run   = float(gd['D'])
+        n_h_run   = max(int(round(float(gd['n_holes']))), 1)
+        V_noz_run = Q_m3s_run / (n_h_run * 3.14159 * (D_m_run / 2) ** 2)
+        dp_run    = float(abs(preds[:, 3].max() - preds[:, 3].min()))
+        st.session_state['pred_results'] = {
+            'coords': coords, 'preds': preds, 'gd': gd, 'res': res,
+            'pred_bounds': pred_bounds,
+            'Eu': euler(max(dp_run, 1e-3), RHO_N2, max(V_noz_run, 1e-3)),
+            'n_h': n_h_run,
+            'D_mm': D_mm, 'pitch_D': pitch_D, 'Q_slm': Q_slm,
+            'H_plenum_mm': H_plenum_mm, 't_face_mm': t_face_mm, 'standoff_mm': standoff_mm,
+        }
 
-        # Uniformity index: 1 − CV in near-wafer band
-        def _ui(field, z, z_lo_frac, z_hi_frac):
-            z_lo = z.min() + z_lo_frac * (z.max() - z.min())
-            z_hi = z.min() + z_hi_frac * (z.max() - z.min())
-            m = (coords[:, 2] >= z_lo) & (coords[:, 2] <= z_hi)
-            if m.sum() < 10:
-                return float('nan')
-            return float(1.0 - field[m].std() / (abs(field[m].mean()) + 1e-12))
-
-        z = coords[:, 2]
-        T_UI   = _ui(preds[:, 4], z, 0.0,  0.10)
-        TMA_UI = _ui(preds[:, 5], z, 0.15, 0.55)
-
-        m1, m2, m3, m4, m5, m6 = st.columns(6)
-        m1.metric('T mean [K]',  f"{preds[:, 4].mean():.1f}",
-                  help='Mean gas temperature across the plenum point cloud [Kelvin]. '
-                       'Target: close to process temperature (typically 150–400°C for ALD).')
-        m2.metric('T range [K]', f"{preds[:, 4].max() - preds[:, 4].min():.2f}",
-                  help='Temperature spread = max(T) − min(T) [Kelvin]. '
-                       'Lower is better — large range means hot/cold zones on the wafer.')
-        m3.metric('TMA max',     f"{preds[:, 5].max():.3e}",
-                  help='Peak TMA (trimethylaluminium, Al(CH₃)₃) mass fraction in the plenum. '
-                       'TMA is the precursor gas for Al₂O₃ ALD. Higher near inlets, should spread uniformly.')
-        m4.metric('Eu',          f'{Eu:.2e}',
-                  help='Euler number = Δp / (½ρV²) — dimensionless pressure drop across the showerhead. '
-                       'Computed from surrogate pressure field. High Eu = large pumping penalty.')
-        m5.metric('T_UI',        f'{T_UI:.3f}' if not np.isnan(T_UI) else 'n/a',
-                  help='Temperature Uniformity Index = 1 − CV(T) in near-wafer band (bottom 10% of plenum). '
-                       'CV = std/mean. Range: (−∞, 1]. Higher is better. >0.95 is excellent.')
-        m6.metric('TMA_UI',      f'{TMA_UI:.3f}' if not np.isnan(TMA_UI) else 'n/a',
-                  help='TMA Uniformity Index = 1 − CV(TMA) in mid-plenum band (15–55% of plenum height). '
-                       'Negative value means std > mean (highly non-uniform precursor distribution). '
-                       'Target: as close to 1.0 as possible.')
-
-        # ── Field slices ───────────────────────────────────────────────────
-        st.subheader('Field slices — bottom 15% of plenum')
-        c1, c2 = st.columns(2)
-        c1.plotly_chart(scatter_slice(coords, preds[:, 4], 'T [K]'),       use_container_width=True)
-        c2.plotly_chart(scatter_slice(coords, preds[:, 5], 'TMA'),          use_container_width=True)
-        c3, c4 = st.columns(2)
-        c3.plotly_chart(scatter_slice(coords, preds[:, 3], 'p [m²/s²]'),   use_container_width=True)
-        U_mag = np.linalg.norm(preds[:, :3], axis=1)
-        c4.plotly_chart(scatter_slice(coords, U_mag, '|U| [m/s]'),          use_container_width=True)
-
-        # ── Geometry + field viewer ────────────────────────────────────────
-        st.subheader('Geometry + Field Viewer')
-        vis_col, ann_col = st.columns([3, 2])
-
-        with vis_col:
-            view_mode = st.radio(
-                'View', ['2D Engineering Drawing', '3D Fields'],
-                horizontal=True, key='pred_mode',
-            )
-            if view_mode == '2D Engineering Drawing':
-                st.plotly_chart(
-                    plot_2d_schematic(res.geometry.params, res.geometry.nozzle_xy,
-                                      res.dim_nums, {}),
-                    use_container_width=True,
-                )
-            else:
-                field_opts = ['T [K]', 'TMA', 'p [Pa]', '|U| [m/s]', 'Ux', 'Uy', 'Uz']
-                field_map  = {
-                    'T [K]': 4, 'TMA': 5, 'p [Pa]': 3,
-                    '|U| [m/s]': None, 'Ux': 0, 'Uy': 1, 'Uz': 2,
-                }
-                sel_field = st.selectbox('Field to display', field_opts, key='pred_field')
-                st.plotly_chart(
-                    plot_3d_field(coords, preds, field_map[sel_field], sel_field,
-                                  res.geometry.nozzle_xy),
-                    use_container_width=True,
-                )
-
-        with ann_col:
-            p_geo = res.geometry.params
-            dim   = res.dim_nums
-
-            st.markdown('#### Design Specification')
-            st.dataframe(pd.DataFrame({
-                'Parameter': [
-                    'D — nozzle diameter', 'pitch / D', 'Q — flow rate',
-                    'n_holes', 'open area %', 'H_plenum', 't_face',
-                    'standoff', 'D_plate', 'pattern',
-                ],
-                'Value': [
-                    f"{D_mm:.2f} mm",
-                    f"{pitch_D:.2f}",
-                    f"{Q_slm:.1f} slm",
-                    str(n_h),
-                    f"{float(gd.get('open_area_frac', 0)) * 100:.1f}%",
-                    f"{H_plenum_mm:.1f} mm",
-                    f"{t_face_mm:.1f} mm",
-                    f"{standoff_mm:.1f} mm",
-                    f"{p_geo.get('D_plate', 0.3) * 1e3:.0f} mm",
-                    'hex',
-                ],
-            }), use_container_width=True, hide_index=True)
-
-            st.markdown('#### Dimensionless Numbers')
-            _DIM_META = {
-                'Re':   ('Reynolds (ρVD/μ)',      'Flow regime'),
-                'Da':   ('Damköhler (k_rxn·L/V)', 'Reaction vs transport'),
-                'Ma':   ('Mach (V/a)',              'Compressibility'),
-                'Eu':   ('Euler (Δp/½ρV²)',         'Pressure drop'),
-                'Pr':   ('Prandtl (cp·μ/k)',        'Heat BL scaling'),
-                'Sc':   ('Schmidt (μ/ρD_m)',        'Diffusion scaling'),
-                'Pe_h': ('Péclet heat (Re·Pr)',     'Advection vs diffusion'),
-                'Pe_m': ('Péclet mass (Re·Sc)',     'Advection vs diffusion'),
-            }
-            all_dim = dict(dim)
-            all_dim['Eu'] = Eu
-            st.dataframe(pd.DataFrame([
-                {'Symbol': sym,
-                 'Formula': meta[0],
-                 'Value': f"{all_dim.get(sym, float('nan')):.4g}",
-                 'Guards against': meta[1]}
-                for sym, meta in _DIM_META.items()
-            ]), use_container_width=True, hide_index=True)
-
-            st.markdown('#### Performance Metrics')
-            st.dataframe(pd.DataFrame([
-                ('T_UI',    f'{T_UI:.4f}'   if not np.isnan(T_UI)   else 'n/a', '1−CV(T) near wafer'),
-                ('TMA_UI',  f'{TMA_UI:.4f}' if not np.isnan(TMA_UI) else 'n/a', '1−CV(TMA) mid-plenum'),
-                ('T mean',  f'{preds[:, 4].mean():.1f} K', 'Mean temperature'),
-                ('T range', f'{preds[:, 4].max() - preds[:, 4].min():.2f} K', 'Max − min T'),
-                ('TMA max', f'{preds[:, 5].max():.3e}', 'Peak TMA mass fraction'),
-                ('Eu',      f'{Eu:.4g}', 'Euler number Δp/(½ρV²)'),
-                ('n_holes', str(n_h), 'Number of nozzle holes'),
-            ], columns=['Metric', 'Value', 'Description']),
-            use_container_width=True, hide_index=True)
-
-        # ── Guardrail check ────────────────────────────────────────────────
-        st.subheader('Guardrail check')
-        engine   = GuardrailEngine(pred_bounds)
-        dim_vals = dict(res.dim_nums)
-        dim_vals['Eu'] = Eu
-        gr_result = engine.check(dim_vals)
-
-        if gr_result.passed:
-            st.success(f'PASS  confidence {gr_result.confidence:.3f}')
-        else:
-            st.error(f'FAIL  confidence {gr_result.confidence:.3f}')
-            for v in gr_result.violations:
-                st.warning(
-                    f'**{v.symbol}** = {v.value:.4g}  '
-                    f'(allowed [{v.lo:.4g}, {v.hi:.4g}])  {v.message}'
-                )
-        for flag in gr_result.special_flags:
-            st.info(f'Flag: {flag}')
-        for rec in gr_result.recommendations:
-            st.caption(f'→ {rec}')
-    else:
+    if 'pred_results' not in st.session_state:
         st.info('Set parameters in the sidebar and click **Run Prediction**.')
+        st.stop()
+
+    # ── Unpack from session state ──────────────────────────────────────────
+    _r          = st.session_state['pred_results']
+    coords      = _r['coords'];   preds  = _r['preds'];  gd   = _r['gd']
+    res         = _r['res'];      Eu     = _r['Eu'];     n_h  = _r['n_h']
+    pred_bounds = _r['pred_bounds']
+    D_mm_r      = _r['D_mm'];     pitch_D_r = _r['pitch_D'];  Q_slm_r = _r['Q_slm']
+    H_plenum_mm_r = _r['H_plenum_mm']
+    t_face_mm_r   = _r['t_face_mm']
+    standoff_mm_r = _r['standoff_mm']
+
+    # ── Key metrics ──────────────────────────────────────────────────────────
+    # Uniformity index: 1 − CV in near-wafer band
+    def _ui(field, z, z_lo_frac, z_hi_frac):
+        z_lo = z.min() + z_lo_frac * (z.max() - z.min())
+        z_hi = z.min() + z_hi_frac * (z.max() - z.min())
+        m = (coords[:, 2] >= z_lo) & (coords[:, 2] <= z_hi)
+        if m.sum() < 10:
+            return float('nan')
+        return float(1.0 - field[m].std() / (abs(field[m].mean()) + 1e-12))
+
+    z = coords[:, 2]
+    T_UI   = _ui(preds[:, 4], z, 0.0,  0.10)
+    TMA_UI = _ui(preds[:, 5], z, 0.15, 0.55)
+
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m1.metric('T mean [K]',  f"{preds[:, 4].mean():.1f}",
+              help='Mean gas temperature across the plenum point cloud [Kelvin]. '
+                   'Target: close to process temperature (typically 150–400°C for ALD).')
+    m2.metric('T range [K]', f"{preds[:, 4].max() - preds[:, 4].min():.2f}",
+              help='Temperature spread = max(T) − min(T) [Kelvin]. '
+                   'Lower is better — large range means hot/cold zones on the wafer.')
+    m3.metric('TMA max',     f"{preds[:, 5].max():.3e}",
+              help='Peak TMA (trimethylaluminium, Al(CH₃)₃) mass fraction in the plenum. '
+                   'TMA is the precursor gas for Al₂O₃ ALD. Higher near inlets, should spread uniformly.')
+    m4.metric('Eu',          f'{Eu:.2e}',
+              help='Euler number = Δp / (½ρV²) — dimensionless pressure drop across the showerhead. '
+                   'Computed from surrogate pressure field. High Eu = large pumping penalty.')
+    m5.metric('T_UI',        f'{T_UI:.3f}' if not np.isnan(T_UI) else 'n/a',
+              help='Temperature Uniformity Index = 1 − CV(T) in near-wafer band (bottom 10% of plenum). '
+                   'CV = std/mean. Range: (−∞, 1]. Higher is better. >0.95 is excellent.')
+    m6.metric('TMA_UI',      f'{TMA_UI:.3f}' if not np.isnan(TMA_UI) else 'n/a',
+              help='TMA Uniformity Index = 1 − CV(TMA) in mid-plenum band (15–55% of plenum height). '
+                   'Negative value means std > mean (highly non-uniform precursor distribution). '
+                   'Target: as close to 1.0 as possible.')
+
+    # ── Field slices ──────────────────────────────────────────────────────
+    st.subheader('Field slices — bottom 15% of plenum')
+    c1, c2 = st.columns(2)
+    c1.plotly_chart(scatter_slice(coords, preds[:, 4], 'T [K]'),      use_container_width=True)
+    c2.plotly_chart(scatter_slice(coords, preds[:, 5], 'TMA'),         use_container_width=True)
+    c3, c4 = st.columns(2)
+    c3.plotly_chart(scatter_slice(coords, preds[:, 3], 'p [m²/s²]'),  use_container_width=True)
+    U_mag = np.linalg.norm(preds[:, :3], axis=1)
+    c4.plotly_chart(scatter_slice(coords, U_mag, '|U| [m/s]'),         use_container_width=True)
+
+    # ── Geometry + field viewer ───────────────────────────────────────────
+    st.subheader('Geometry + Field Viewer')
+    vis_col, ann_col = st.columns([3, 2])
+
+    with vis_col:
+        view_mode = st.radio(
+            'View', ['2D Engineering Drawing', '3D Fields'],
+            horizontal=True, key='pred_mode',
+        )
+        if view_mode == '2D Engineering Drawing':
+            st.plotly_chart(
+                plot_2d_schematic(res.geometry.params, res.geometry.nozzle_xy,
+                                  res.dim_nums, {}),
+                use_container_width=True,
+            )
+        else:
+            field_opts = ['T [K]', 'TMA', 'p [Pa]', '|U| [m/s]', 'Ux', 'Uy', 'Uz']
+            field_map  = {
+                'T [K]': 4, 'TMA': 5, 'p [Pa]': 3,
+                '|U| [m/s]': None, 'Ux': 0, 'Uy': 1, 'Uz': 2,
+            }
+            sel_field = st.selectbox('Field to display', field_opts, key='pred_field')
+            st.plotly_chart(
+                plot_3d_field(coords, preds, field_map[sel_field], sel_field,
+                              res.geometry.nozzle_xy),
+                use_container_width=True,
+            )
+
+    with ann_col:
+        p_geo = res.geometry.params
+        dim   = res.dim_nums
+
+        st.markdown('#### Design Specification')
+        st.dataframe(pd.DataFrame({
+            'Parameter': [
+                'D — nozzle diameter', 'pitch / D', 'Q — flow rate',
+                'n_holes', 'open area %', 'H_plenum', 't_face',
+                'standoff', 'D_plate', 'pattern',
+            ],
+            'Value': [
+                f"{D_mm_r:.2f} mm",
+                f"{pitch_D_r:.2f}",
+                f"{Q_slm_r:.1f} slm",
+                str(n_h),
+                f"{float(gd.get('open_area_frac', 0)) * 100:.1f}%",
+                f"{H_plenum_mm_r:.1f} mm",
+                f"{t_face_mm_r:.1f} mm",
+                f"{standoff_mm_r:.1f} mm",
+                f"{p_geo.get('D_plate', 0.3) * 1e3:.0f} mm",
+                'hex',
+            ],
+        }), use_container_width=True, hide_index=True)
+
+        st.markdown('#### Dimensionless Numbers')
+        _DIM_META = {
+            'Re':   ('Reynolds (ρVD/μ)',      'Flow regime'),
+            'Da':   ('Damköhler (k_rxn·L/V)', 'Reaction vs transport'),
+            'Ma':   ('Mach (V/a)',              'Compressibility'),
+            'Eu':   ('Euler (Δp/½ρV²)',         'Pressure drop'),
+            'Pr':   ('Prandtl (cp·μ/k)',        'Heat BL scaling'),
+            'Sc':   ('Schmidt (μ/ρD_m)',        'Diffusion scaling'),
+            'Pe_h': ('Péclet heat (Re·Pr)',     'Advection vs diffusion'),
+            'Pe_m': ('Péclet mass (Re·Sc)',     'Advection vs diffusion'),
+        }
+        all_dim = dict(dim)
+        all_dim['Eu'] = Eu
+        st.dataframe(pd.DataFrame([
+            {'Symbol': sym,
+             'Formula': meta[0],
+             'Value': f"{all_dim.get(sym, float('nan')):.4g}",
+             'Guards against': meta[1]}
+            for sym, meta in _DIM_META.items()
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown('#### Performance Metrics')
+        st.dataframe(pd.DataFrame([
+            ('T_UI',    f'{T_UI:.4f}'   if not np.isnan(T_UI)   else 'n/a', '1−CV(T) near wafer'),
+            ('TMA_UI',  f'{TMA_UI:.4f}' if not np.isnan(TMA_UI) else 'n/a', '1−CV(TMA) mid-plenum'),
+            ('T mean',  f'{preds[:, 4].mean():.1f} K', 'Mean temperature'),
+            ('T range', f'{preds[:, 4].max() - preds[:, 4].min():.2f} K', 'Max − min T'),
+            ('TMA max', f'{preds[:, 5].max():.3e}', 'Peak TMA mass fraction'),
+            ('Eu',      f'{Eu:.4g}', 'Euler number Δp/(½ρV²)'),
+            ('n_holes', str(n_h), 'Number of nozzle holes'),
+        ], columns=['Metric', 'Value', 'Description']),
+        use_container_width=True, hide_index=True)
+
+    # ── Guardrail check ───────────────────────────────────────────────────
+    st.subheader('Guardrail check')
+    engine   = GuardrailEngine(pred_bounds)
+    dim_vals = dict(res.dim_nums)
+    dim_vals['Eu'] = Eu
+    gr_result = engine.check(dim_vals)
+
+    if gr_result.passed:
+        st.success(f'PASS  confidence {gr_result.confidence:.3f}')
+    else:
+        st.error(f'FAIL  confidence {gr_result.confidence:.3f}')
+        for v in gr_result.violations:
+            st.warning(
+                f'**{v.symbol}** = {v.value:.4g}  '
+                f'(allowed [{v.lo:.4g}, {v.hi:.4g}])  {v.message}'
+            )
+    for flag in gr_result.special_flags:
+        st.info(f'Flag: {flag}')
+    for rec in gr_result.recommendations:
+        st.caption(f'→ {rec}')
 
 # ── Tab 2: Optimizer ───────────────────────────────────────────────────────
 with tab_opt:
