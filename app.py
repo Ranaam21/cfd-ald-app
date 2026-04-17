@@ -781,11 +781,15 @@ with tab_geo:
                         f"Q = {d['Q_slm']:.1f} slm  |  n_holes = {d['n_holes']}  |  "
                         f"pattern = {d.get('pattern', 'hex')}"
                     )
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric('Score',  f"{d['score']:.3f}")
-                    c2.metric('T_UI',   f"{d['T_UI']:.3f}")
-                    c3.metric('TMA_UI', f"{d['TMA_UI']:.3f}")
-                    c4.metric('Eu',     f"{d['Eu']:.2f}")
+                    r1c1, r1c2 = st.columns(2)
+                    r2c1, r2c2 = st.columns(2)
+                    r1c1.metric('Score',  f"{d['score']:.3f}")
+                    r1c2.metric('T_UI',   f"{d['T_UI']:.3f}")
+                    tma_ui = d['TMA_UI']
+                    r2c1.metric('TMA_UI', f"{tma_ui:.3f}", help='Negative = non-uniform TMA (std > mean)')
+                    eu = d['Eu']
+                    eu_str = f"{eu/1e3:.1f}k" if eu >= 1000 else f"{eu:.2f}"
+                    r2c2.metric('Eu', eu_str, help='Euler number Δp/(½ρV²)')
                     conf = d.get('confidence_post', d.get('confidence_pre', float('nan')))
                     st.caption(
                         f"Re = {d['Re']:.1f}  |  Da = {d['Da']:.2f}  |  conf = {conf:.2f}"
