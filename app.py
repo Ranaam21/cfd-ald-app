@@ -534,7 +534,7 @@ with st.sidebar:
 | **Ma** | Mach | V/a | <0.3 incompressible, >0.3 compressibility kicks in |
 | **Eu** | Euler | Δp/(½ρV²) | Pressure drop penalty; lower = less pumping power |
 | **Pr** | Prandtl | cpμ/k | Heat BL thickness; ≈0.71 for N₂ |
-| **Sc** | Schmidt | μ/(ρD_m) | Mass diffusion vs momentum; ≈1–3 for TMA in N₂ |
+| **Sc** | Schmidt | μ/(ρD_m) | Mass diffusion vs momentum; ≈1–3 for TMA (Trimethylaluminium) in N₂ |
 | **Pe_h** | Péclet (heat) | Re·Pr | Advection vs diffusion of heat |
 | **Pe_m** | Péclet (mass) | Re·Sc | Advection vs diffusion of precursor |
 | **Nu** | Nusselt | hL/k | Convective vs conductive heat transfer (CFD only) |
@@ -546,7 +546,7 @@ with st.sidebar:
 | Symbol | Meaning |
 |--------|---------|
 | **T_UI** | Temperature Uniformity Index = 1 − CV(T). Range (−∞,1]. >0.95 = excellent |
-| **TMA_UI** | TMA precursor Uniformity Index = 1 − CV(TMA). Negative = std > mean (non-uniform) |
+| **TMA_UI** | TMA (Trimethylaluminium, Al(CH₃)₃) Uniformity Index = 1 − CV(TMA). Negative = std > mean (non-uniform) |
 | **Score** | Composite = 0.4×T_UI + 0.4×TMA_UI + 0.2×confidence |
 | **conf** | Guardrail confidence [0→1]. 1.0 = all physics checks passed |
 
