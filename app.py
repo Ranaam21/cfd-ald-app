@@ -1,6 +1,14 @@
 import sys
 import os
-sys.path.insert(0, '/content/cfd-ald-app')
+from pathlib import Path
+
+# ── Environment-aware repo + data root ────────────────────────────────────
+# Override with env vars for local use:
+#   REPO_DIR=/Users/you/Desktop/CFD/cfd-ald-app
+#   CFD_BASE=/Users/you/Desktop/CFD/cfd-ald-app
+# Defaults work as-is inside Colab with Drive mounted.
+_REPO = Path(os.environ.get('REPO_DIR', '/content/cfd-ald-app'))
+sys.path.insert(0, str(_REPO))
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
 import streamlit as st
@@ -8,7 +16,6 @@ import numpy as np
 import json
 import torch
 import torch.nn as nn
-from pathlib import Path
 from scipy.spatial import cKDTree
 import plotly.express as px
 import plotly.graph_objects as go
@@ -19,7 +26,8 @@ from physics.guardrails import GuardrailEngine, GuardrailBounds
 from physics.calculator import euler
 
 # ── Constants ──────────────────────────────────────────────────────────────
-DRIVE_BASE  = Path('/content/drive/MyDrive/cfd-ald-app')
+_DEFAULT_BASE = '/content/drive/MyDrive/cfd-ald-app'
+DRIVE_BASE  = Path(os.environ.get('CFD_BASE', _DEFAULT_BASE))
 CKPT        = DRIVE_BASE / 'checkpoints' / 'multihead' / 'multihead_final.pt'
 OPT_JSON    = DRIVE_BASE / 'checkpoints' / 'optimizer' / 'optimizer_results.json'
 GR_JSON     = DRIVE_BASE / 'checkpoints' / 'guardrail' / 'guardrail_results.json'
