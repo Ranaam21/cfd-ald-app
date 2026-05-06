@@ -103,10 +103,12 @@ def read_case_fields(case_dir: Path) -> Optional[dict]:
         print(f"    WARN: could not read mesh centres: {e}")
         return None
 
-    # Velocity (vector)
+    # Velocity (vector) — fluidfoam may return (3, N) or (N, 3); normalise to (N, 3)
     try:
-        U = ff.readfield(case_str, t, "U")
-        fields["U"] = np.asarray(U, dtype=np.float32)   # [N, 3]
+        U = np.asarray(ff.readfield(case_str, t, "U"), dtype=np.float32)
+        if U.ndim == 2 and U.shape[0] == 3 and U.shape[1] != 3:
+            U = U.T  # (3, N) → (N, 3)
+        fields["U"] = U
     except Exception as e:
         print(f"    WARN: could not read U: {e}")
 
@@ -238,16 +240,46 @@ def build_global_features(case_meta: dict) -> np.ndarray:
 # Uniformity metrics
 # ══════════════════════════════════════════════════════════════════════════
 
-def _wafer_cells(fields: dict, z_tol: float = 0.002) -> Optional[dict]:
-    """Select cells in the first z_tol metres above the wafer (z ≈ 0)."""
+def _wafer_cells(fields: dict, z_tol: float = 0.002,
+                 z_frac: float = 0.05) -> Optional[dict]:
+    """Select cells near the wafer plane.
+
+    Tries the absolute tolerance first (z < z_tol, ideal when full domain
+    is meshed). Falls back to cells in the bottom z_frac of the domain when
+    the standoff / nozzle region is absent from the mesh — e.g. when
+    snappyHexMesh only captured the plenum.  In that case the bottom layer
+    of the plenum (nozzle-exit plane) is used as a proxy for wafer TMA.
+
+    Handles the fluidfoam quirk where vector and scalar fields occasionally
+    have slightly different cell counts by trimming all arrays to the common
+    minimum length before masking.
+    """
     z = fields.get("z")
     if z is None:
         return None
+
+    # Trim all arrays to the smallest common length (fluidfoam quirk).
+    # Only consider 1D arrays (coords + scalars); U is (N,3) and handled separately.
+    N_common = min(
+        v.shape[0] for v in fields.values()
+        if isinstance(v, np.ndarray) and v.ndim == 1
+    )
+    trimmed = {
+        k: v[:N_common] if (isinstance(v, np.ndarray) and v.shape[0] != N_common) else v
+        for k, v in fields.items()
+    }
+    z = trimmed["z"]
+
     mask = z < z_tol
     if mask.sum() < 10:
+        # Fall back: bottom z_frac of the meshed domain
+        z_min = z.min()
+        z_band = max(z_tol, (z.max() - z_min) * z_frac)
+        mask = z < (z_min + z_band)
+    if mask.sum() < 10:
         return None
-    return {k: v[mask] if (isinstance(v, np.ndarray) and v.shape[0] == len(z))
-            else v for k, v in fields.items()}
+    return {k: v[mask] if isinstance(v, np.ndarray) else v
+            for k, v in trimmed.items()}
 
 
 def compute_rms_uniformity(x: np.ndarray, y: np.ndarray,
@@ -282,7 +314,7 @@ def compute_rms_uniformity(x: np.ndarray, y: np.ndarray,
         "azimuthal_rms":    float(np.std(azimuthal_means)) if azimuthal_means else 0.0,
         "overall_rms":      f_std,
         "mean_TMA_wafer":   f_mean,
-        "uniformity_index": 1.0 - (f_std / (f_mean + 1e-12)),
+        "uniformity_index": float(np.clip(1.0 - (f_std / (f_mean + 1e-12)), 0.0, 1.0)),
     }
 
 
@@ -354,11 +386,11 @@ def write_hdf5(fields: dict, case_meta: dict, out_path: Path,
 # Per-case processor
 # ══════════════════════════════════════════════════════════════════════════
 
-def process_case(case_dir: Path, out_dir: Path) -> dict:
+def process_case(case_dir: Path, out_dir: Path, overwrite: bool = False) -> dict:
     name     = case_dir.name
     out_path = out_dir / f"{name}.h5"
 
-    if out_path.exists():
+    if out_path.exists() and not overwrite:
         print(f"  [SKIP] {name}: already converted")
         return {"name": name, "status": "already_done", "out": str(out_path)}
 
@@ -419,13 +451,39 @@ def parse_args():
     p.add_argument("--out_dir",
                    default="data/processed/showerhead_openfoam",
                    help="Output directory for HDF5 files")
+    p.add_argument("--overwrite", action="store_true",
+                   help="Re-process and overwrite existing HDF5 files")
     return p.parse_args()
+
+
+def _preserve_existing_hdf5(out_dir: Path) -> int:
+    """Copy the 3 already-processed validation HDF5 files into out_dir if not
+    already there.  Never overwrites — just ensures they are included in the
+    combined training dataset alongside new sweep cases."""
+    import shutil
+    src = Path(__file__).resolve().parents[1] / "checkpoints" / "cfd_validation" / "hdf5"
+    if not src.exists():
+        return 0
+    copied = 0
+    for h5 in src.glob("*.h5"):
+        dst = out_dir / h5.name
+        if not dst.exists():
+            shutil.copy2(h5, dst)
+            print(f"  [COPY] {h5.name}  (preserved from cfd_validation)")
+            copied += 1
+        else:
+            print(f"  [KEEP] {h5.name}  (already in out_dir)")
+    return copied
 
 
 def main():
     args    = parse_args()
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Always preserve the 3 hand-validated cases — never overwrite them
+    print("── Preserving existing validated HDF5 cases ──")
+    _preserve_existing_hdf5(out_dir)
 
     if args.case_dir:
         case_dirs = [Path(args.case_dir)]
@@ -442,7 +500,7 @@ def main():
 
     results = []
     for case_dir in case_dirs:
-        result = process_case(case_dir, out_dir)
+        result = process_case(case_dir, out_dir, overwrite=args.overwrite)
         results.append(result)
 
     # Summary

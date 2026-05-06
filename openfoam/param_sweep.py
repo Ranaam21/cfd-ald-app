@@ -119,6 +119,11 @@ def build_case_list(max_cases: int = None) -> list:
 # Case generation
 # ══════════════════════════════════════════════════════════════════════════
 
+def _is_generated(case_dir: Path) -> bool:
+    """Case directory already has OpenFOAM input files (run.sh present)."""
+    return (case_dir / "run.sh").exists()
+
+
 def generate_one(case_info: dict, out_dir: Path) -> dict:
     name       = case_info["case_name"]
     geo_params = case_info["geo_params"]
@@ -126,6 +131,11 @@ def generate_one(case_info: dict, out_dir: Path) -> dict:
     case_dir   = out_dir / name
 
     result = {"name": name, "case_dir": str(case_dir), "status": "pending", "error": ""}
+
+    # Skip regeneration if OpenFOAM files already exist (restart-safe)
+    if _is_generated(case_dir):
+        result["status"] = "generated"
+        return result
 
     try:
         topology = ShowerheadTopology(pattern=NozzlePattern.HEX)
@@ -176,7 +186,25 @@ def _is_completed(case_dir: Path) -> bool:
     return False
 
 
-def run_case_docker(case_dir: Path, verbose: bool = False) -> dict:
+def _cleanup_stale_locks(out_dir: Path) -> int:
+    """Remove .running lock files left by a previous crashed session."""
+    stale = list(out_dir.glob("*/.running"))
+    for lock in stale:
+        lock.unlink(missing_ok=True)
+    if stale:
+        print(f"  Cleaned up {len(stale)} stale lock file(s) from previous run.")
+    return len(stale)
+
+
+def _append_progress(out_dir: Path, result: dict) -> None:
+    """Append one result to progress.jsonl immediately after it completes.
+    Each line is a JSON object — safe to read even if session dies mid-sweep."""
+    progress_file = out_dir / "progress.jsonl"
+    with open(progress_file, "a") as f:
+        f.write(json.dumps(result) + "\n")
+
+
+def run_case_docker(case_dir: Path, out_dir: Path, verbose: bool = False) -> dict:
     """Run a single case inside a Docker container. Skips if already done."""
     name = case_dir.name
 
@@ -185,7 +213,9 @@ def run_case_docker(case_dir: Path, verbose: bool = False) -> dict:
 
     if _is_completed(case_dir):
         print(f"  [SKIP] {name}: already completed")
-        return {"name": name, "status": "completed_cached"}
+        result = {"name": name, "status": "completed_cached"}
+        _append_progress(out_dir, result)
+        return result
 
     lock = case_dir / ".running"
     lock.touch()
@@ -207,36 +237,44 @@ def run_case_docker(case_dir: Path, verbose: bool = False) -> dict:
 
         if proc.returncode == 0:
             print(f"  [DONE] {name}")
-            return {"name": name, "status": "completed"}
+            result = {"name": name, "status": "completed"}
         else:
             err = (proc.stderr or "")[-800:]
             print(f"  [FAIL] {name}: {err[-200:]}")
-            return {"name": name, "status": "foam_failed", "error": err}
+            result = {"name": name, "status": "foam_failed", "error": err}
 
     except subprocess.TimeoutExpired:
         lock.unlink(missing_ok=True)
         print(f"  [TIMEOUT] {name}")
-        return {"name": name, "status": "timeout", "error": "Exceeded 2h timeout"}
+        result = {"name": name, "status": "timeout", "error": "Exceeded 4h timeout"}
 
     except Exception as e:
         lock.unlink(missing_ok=True)
-        return {"name": name, "status": "error", "error": str(e)}
+        result = {"name": name, "status": "error", "error": str(e)}
+
+    _append_progress(out_dir, result)
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════════════
 # Parallel sweep runner
 # ══════════════════════════════════════════════════════════════════════════
 
-def run_sweep_parallel(case_dirs: list, n_parallel: int = 6) -> list:
+def run_sweep_parallel(case_dirs: list, out_dir: Path, n_parallel: int = 6) -> list:
     """Run all cases with up to n_parallel Docker containers at once."""
     results = []
-    print(f"\nRunning {len(case_dirs)} cases with {n_parallel} parallel Docker containers\n")
+    total = len(case_dirs)
+    done  = [0]   # mutable counter for thread-safe progress display
+    print(f"\nRunning {total} cases  |  {n_parallel} parallel Docker containers")
+    print(f"Progress written to: {out_dir / 'progress.jsonl'}  (restart-safe)\n")
 
     with ThreadPoolExecutor(max_workers=n_parallel) as executor:
-        futures = {executor.submit(run_case_docker, d): d for d in case_dirs}
+        futures = {executor.submit(run_case_docker, d, out_dir): d for d in case_dirs}
         for future in as_completed(futures):
             result = future.result()
             results.append(result)
+            done[0] += 1
+            print(f"  [{done[0]:3d}/{total}] {result['status']:18s}  {result['name']}")
 
     return results
 
@@ -278,11 +316,32 @@ def _load_failed_cases(out_dir: Path) -> list:
     return failed
 
 
+def _check_docker() -> bool:
+    """Return True if Docker daemon is reachable."""
+    try:
+        subprocess.run(["docker", "info"], capture_output=True, timeout=10, check=True)
+        return True
+    except Exception:
+        return False
+
+
 def main():
     args    = parse_args()
     out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── Retry-failed mode: skip generation, just re-run specific cases ────
+    # ── Docker Desktop health check ───────────────────────────────────────
+    if not args.dry_run and not args.generate_only:
+        if not _check_docker():
+            print("ERROR: Docker daemon not reachable.")
+            print("       Open Docker Desktop and wait for it to start, then retry.")
+            return
+        print("Docker: OK")
+
+    # ── Clean up stale locks from any previous crashed session ───────────
+    _cleanup_stale_locks(out_dir)
+
+    # ── Retry-failed mode ─────────────────────────────────────────────────
     if args.retry_failed:
         failed_names = _load_failed_cases(out_dir)
         if not failed_names:
@@ -290,7 +349,7 @@ def main():
             return
         case_dirs = [out_dir / name for name in failed_names
                      if (out_dir / name).exists()]
-        run_results = run_sweep_parallel(case_dirs, n_parallel=args.n_parallel)
+        run_results = run_sweep_parallel(case_dirs, out_dir, n_parallel=args.n_parallel)
         _write_summary(out_dir, run_results)
         return
 
@@ -304,28 +363,26 @@ def main():
             print(f"  {c['case_name']}")
         return
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # ── Step 1: generate all case directories ────────────────────────────
-    print(f"\n── Generating {total} case directories ──")
+    # ── Step 1: generate case directories (skips existing ones) ──────────
+    print(f"\n── Generating {total} case directories (skips already-generated) ──")
     gen_results = []
     for i, case_info in enumerate(cases):
         r = generate_one(case_info, out_dir)
         gen_results.append(r)
         status_icon = "✓" if r["status"] == "generated" else "✗"
         print(f"  [{i+1:3d}/{total}] {status_icon} {r['name']}"
-              + (f"  ERR: {r['error']}" if r["error"] else ""))
+              + (f"  ERR: {r['error']}" if r.get("error") else ""))
 
     generated = [r for r in gen_results if r["status"] == "generated"]
-    print(f"\nGenerated {len(generated)}/{total} cases")
+    print(f"\nGenerated / ready: {len(generated)}/{total} cases")
 
     if args.generate_only:
         _write_summary(out_dir, gen_results)
         return
 
-    # ── Step 2: run in parallel via Docker ───────────────────────────────
+    # ── Step 2: run via Docker (skips already-completed cases) ───────────
     case_dirs = [out_dir / r["name"] for r in generated]
-    run_results = run_sweep_parallel(case_dirs, n_parallel=args.n_parallel)
+    run_results = run_sweep_parallel(case_dirs, out_dir, n_parallel=args.n_parallel)
 
     # Merge gen + run results
     run_map = {r["name"]: r for r in run_results}

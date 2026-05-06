@@ -199,11 +199,11 @@ geometry
 
 castellatedMeshControls
 {{
-    maxLocalCells           2000000;
-    maxGlobalCells          6000000;
+    maxLocalCells           1000000;
+    maxGlobalCells          3000000;
     minRefinementCells      10;
     maxLoadUnbalance        0.10;
-    nCellsBetweenLevels     2;
+    nCellsBetweenLevels     1;
     resolveFeatureAngle     30;
 
     features ();
@@ -225,8 +225,8 @@ snapControls
 {{
     nSmoothPatch        3;
     tolerance           2.0;
-    nSolveIter          30;
-    nRelaxIter          5;
+    nSolveIter          10;
+    nRelaxIter          3;
     nFeatureSnapIter    10;
     implicitFeatureSnap false;
     explicitFeatureSnap true;
