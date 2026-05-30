@@ -1179,6 +1179,145 @@ mergeTolerance 1e-6;
 """
 
 
+# ── Track 2 BC writers — use VICES patch names ────────────────────────────
+# VICES patches: inlet, outlet, outerWalls (blockMesh)
+#                vices_walls, vices_inlet, nozzle_walls, wafer (STL)
+
+_VICES_WALLS = ["outerWalls", "vices_walls", "vices_inlet"]
+
+def _v2_field_U(U_inlet: float) -> str:
+    return _header("volVectorField", "0", "U") + f"""
+dimensions      [0 1 -1 0 0 0 0];
+internalField   uniform (0 0 {-abs(U_inlet):.6f});
+boundaryField
+{{
+    inlet           {{ type fixedValue; value uniform (0 0 {-abs(U_inlet):.6f}); }}
+    outlet          {{ type pressureInletOutletVelocity; value uniform (0 0 0); }}
+    outerWalls      {{ type noSlip; }}
+    vices_walls     {{ type noSlip; }}
+    vices_inlet     {{ type noSlip; }}
+    nozzle_walls    {{ type noSlip; }}
+    wafer           {{ type noSlip; }}
+}}
+"""
+
+def _v2_field_p() -> str:
+    return _header("volScalarField", "0", "p") + """
+dimensions      [1 -1 -2 0 0 0 0];
+internalField   uniform 101325;
+boundaryField
+{
+    inlet           { type zeroGradient; }
+    outlet          { type fixedValue; value uniform 101325; }
+    outerWalls      { type zeroGradient; }
+    vices_walls     { type zeroGradient; }
+    vices_inlet     { type zeroGradient; }
+    nozzle_walls    { type zeroGradient; }
+    wafer           { type zeroGradient; }
+}
+"""
+
+def _v2_field_T(T_inlet: float) -> str:
+    return _header("volScalarField", "0", "T") + f"""
+dimensions      [0 0 0 1 0 0 0];
+internalField   uniform {T_inlet:.1f};
+boundaryField
+{{
+    inlet           {{ type fixedValue; value uniform {T_inlet:.1f}; }}
+    outlet          {{ type zeroGradient; }}
+    outerWalls      {{ type zeroGradient; }}
+    vices_walls     {{ type zeroGradient; }}
+    vices_inlet     {{ type zeroGradient; }}
+    nozzle_walls    {{ type zeroGradient; }}
+    wafer           {{ type fixedValue; value uniform {T_inlet - 5.0:.1f}; }}
+}}
+"""
+
+def _v2_field_TMA(pulse_time: float) -> str:
+    purge_end = pulse_time + pulse_time * 0.05
+    return _header("volScalarField", "0", "TMA") + f"""
+dimensions      [0 0 0 0 0 0 0];
+internalField   uniform 0;
+boundaryField
+{{
+    inlet
+    {{
+        type            uniformFixedValue;
+        uniformValue    table
+        (
+            (0                  0    )
+            (1e-5               0.01 )
+            ({pulse_time:.4f}   0.01 )
+            ({purge_end:.4f}    0    )
+            (1e6                0    )
+        );
+    }}
+    outlet          {{ type inletOutlet; inletValue uniform 0; value uniform 0; }}
+    outerWalls      {{ type zeroGradient; }}
+    vices_walls     {{ type zeroGradient; }}
+    vices_inlet     {{ type zeroGradient; }}
+    nozzle_walls    {{ type zeroGradient; }}
+    wafer           {{ type fixedValue; value uniform 0; }}
+}}
+"""
+
+def _v2_field_N2() -> str:
+    return _header("volScalarField", "0", "N2") + """
+dimensions      [0 0 0 0 0 0 0];
+internalField   uniform 1;
+boundaryField
+{
+    inlet           { type fixedValue; value uniform 1; }
+    outlet          { type inletOutlet; inletValue uniform 1; value uniform 1; }
+    outerWalls      { type zeroGradient; }
+    vices_walls     { type zeroGradient; }
+    vices_inlet     { type zeroGradient; }
+    nozzle_walls    { type zeroGradient; }
+    wafer           { type zeroGradient; }
+}
+"""
+
+def _v2_field_k(U_nozzle: float, D: float) -> str:
+    I  = 0.05
+    k0 = 1.5 * (U_nozzle * I) ** 2
+    return _header("volScalarField", "0", "k") + f"""
+dimensions      [0 2 -2 0 0 0 0];
+internalField   uniform {k0:.6f};
+boundaryField
+{{
+    inlet           {{ type fixedValue; value uniform {k0:.6f}; }}
+    outlet          {{ type zeroGradient; }}
+    outerWalls      {{ type kqRWallFunction; value uniform {k0:.6f}; }}
+    vices_walls     {{ type kqRWallFunction; value uniform {k0:.6f}; }}
+    vices_inlet     {{ type kqRWallFunction; value uniform {k0:.6f}; }}
+    nozzle_walls    {{ type kqRWallFunction; value uniform {k0:.6f}; }}
+    wafer           {{ type kqRWallFunction; value uniform {k0:.6f}; }}
+}}
+"""
+
+def _v2_field_omega(U_nozzle: float, D: float) -> str:
+    I    = 0.05
+    k0   = 1.5 * (U_nozzle * I) ** 2
+    Cmu  = 0.09
+    L    = 0.07 * D
+    eps0 = Cmu ** 0.75 * k0 ** 1.5 / L
+    om0  = eps0 / (Cmu * k0)
+    return _header("volScalarField", "0", "omega") + f"""
+dimensions      [0 0 -1 0 0 0 0];
+internalField   uniform {om0:.4f};
+boundaryField
+{{
+    inlet           {{ type fixedValue; value uniform {om0:.4f}; }}
+    outlet          {{ type zeroGradient; }}
+    outerWalls      {{ type omegaWallFunction; value uniform {om0:.4f}; }}
+    vices_walls     {{ type omegaWallFunction; value uniform {om0:.4f}; }}
+    vices_inlet     {{ type omegaWallFunction; value uniform {om0:.4f}; }}
+    nozzle_walls    {{ type omegaWallFunction; value uniform {om0:.4f}; }}
+    wafer           {{ type omegaWallFunction; value uniform {om0:.4f}; }}
+}}
+"""
+
+
 def _write_case_json_vices(case_dir: Path, vices_result,
                             flow_rate_slm: float, beta: float,
                             v_th: float, D_m: float, T_inlet: float,
@@ -1254,15 +1393,15 @@ def generate_case_vices(
     (out / "system").mkdir(parents=True)
     (out / "geometry").mkdir(parents=True)
 
-    # ── 0/ fields — identical to Track 1 ─────────────────────────────────
-    (out / "0" / "U").write_text(_field_U(U_inlet))
-    (out / "0" / "p").write_text(_field_p())
-    (out / "0" / "T").write_text(_field_T(T_inlet))
-    (out / "0" / "TMA").write_text(_field_TMA(pulse_time))
-    (out / "0" / "N2").write_text(_field_N2())
+    # ── 0/ fields — VICES-specific patch names ───────────────────────────
+    (out / "0" / "U").write_text(_v2_field_U(U_inlet))
+    (out / "0" / "p").write_text(_v2_field_p())
+    (out / "0" / "T").write_text(_v2_field_T(T_inlet))
+    (out / "0" / "TMA").write_text(_v2_field_TMA(pulse_time))
+    (out / "0" / "N2").write_text(_v2_field_N2())
     if turbulent:
-        (out / "0" / "k").write_text(_field_k(U_nozzle, D))
-        (out / "0" / "omega").write_text(_field_omega(U_nozzle, D))
+        (out / "0" / "k").write_text(_v2_field_k(U_nozzle, D))
+        (out / "0" / "omega").write_text(_v2_field_omega(U_nozzle, D))
 
     # ── constant/ — identical to Track 1 ─────────────────────────────────
     (out / "constant" / "thermophysicalProperties").write_text(
