@@ -657,9 +657,25 @@ with st.sidebar:
     active_track = st.radio(
         'Geometry synthesis method',
         ['Track 1 — PCGM (Parametric)', 'Track 2 — VICES (CSG Topology)'],
+        captions=[
+            'Parametric hex nozzle array. Vary diameter, pitch, plenum height, '
+            'faceplate thickness and standoff. Fixed topology — fast inference (~5s).',
+            'CSG boolean tree synthesis via SDF + Marching Cubes. Choose from '
+            '4 topology types: baffled, conical, annular, two-zone. '
+            'Explores designs Track 1 cannot represent (~30s build + inference).',
+        ],
         key='active_track',
-        help='Track 1: parametric hex nozzle array. '
-             'Track 2: CSG boolean tree synthesis (baffled / conical / annular / two-zone).',
+        help=(
+            'PCGM — Physics-Constrained Geometric Morphogenesis: '
+            'generates showerhead geometry from parametric rules (nozzle diameter, '
+            'pitch, plenum height). Fixed hex-array topology.\n\n'
+            'VICES — Voxel-Implicit Computational Engineering Synthesis: '
+            'builds geometry as Signed Distance Fields (SDF) using boolean CSG operations '
+            '(union, subtract, intersect) on primitive shapes. Supports 4 distinct '
+            'topology families. Design space characterised by Catalan numbers — '
+            'e.g. 6 primitives yield C(5)=42 distinct tree topologies. '
+            'Marching Cubes converts SDF voxel grid to triangle mesh.'
+        ),
     )
     is_track2 = active_track.startswith('Track 2')
 
@@ -673,8 +689,20 @@ with st.sidebar:
             ['A — Baffled plenum', 'B — Conical diffuser',
              'C — Annular rings',  'D — Two-zone plenum'],
             key='vices_type',
-            help='A: baffle redistributes flow. B: cone deflects inlet jet radially. '
-                 'C: concentric ring nozzles. D: divider splits plenum into two zones.',
+            help=(
+                'A — Baffled plenum: an annular baffle ring inside the plenum forces gas to '
+                'redistribute radially before reaching the nozzle plate. '
+                'CSG: Cylinder − BaffleAnnulus − Nozzles.\n\n'
+                'B — Conical diffuser: a central cone protrudes from the inlet face, '
+                'deflecting the inlet jet radially outward for more uniform distribution. '
+                'CSG: Cylinder − Cone − Nozzles.\n\n'
+                'C — Annular rings: nozzles arranged in concentric rings instead of hex packing, '
+                'giving a different radial flux profile. '
+                'CSG: Cylinder − RingNozzleUnion.\n\n'
+                'D — Two-zone plenum: an annular divider ring splits the plenum into inner '
+                'and outer gas zones with different residence times. '
+                'CSG: Cylinder − DividerRing − Nozzles.'
+            ),
         )
         vices_type_char = vices_type[0]   # 'A','B','C','D'
 
@@ -682,20 +710,31 @@ with st.sidebar:
             if vices_type_char == 'A':
                 vices_extra = st.slider('Baffle position (fraction of plenum height)',
                                         0.2, 0.8, 0.5, 0.05, key='vices_extra',
-                                        help='Where the baffle sits inside the plenum. '
-                                             '0.5 = midpoint.')
+                                        help='Vertical position of the baffle inside the plenum, '
+                                             'expressed as a fraction of plenum height from the faceplate. '
+                                             '0.3 = low (near faceplate), 0.7 = high (near inlet). '
+                                             'Lower baffle → shorter mixing path, sharper redistribution.')
             elif vices_type_char == 'B':
-                vices_extra = st.slider('Cone radius (fraction of plate radius)',
+                vices_extra = st.slider('Cone base radius (fraction of plate radius)',
                                         0.2, 0.6, 0.35, 0.05, key='vices_extra',
-                                        help='Radius of the conical diffuser relative to plate radius.')
+                                        help='Base radius of the conical diffuser as a fraction of '
+                                             'the showerhead plate radius. '
+                                             'Larger cone → stronger radial deflection → more uniform '
+                                             'peripheral distribution. Smaller cone → more central flow.')
             elif vices_type_char == 'C':
                 vices_extra = st.slider('Number of nozzle rings', 2, 5, 3, 1,
                                         key='vices_extra',
-                                        help='Concentric rings of nozzles.')
+                                        help='Number of concentric nozzle rings. '
+                                             'Each ring has nozzles equally spaced around its circumference. '
+                                             '2 rings = sparse, 5 rings = dense. '
+                                             'Nozzles per ring scales with ring circumference.')
             else:
                 vices_extra = st.slider('Divider radius (fraction of plate radius)',
                                         0.3, 0.65, 0.45, 0.05, key='vices_extra',
-                                        help='Radius of the annular divider ring.')
+                                        help='Inner radius of the annular divider ring as a fraction '
+                                             'of the plate radius. Sets the boundary between inner and '
+                                             'outer flow zones. '
+                                             '0.35 = small inner zone, 0.60 = large inner zone.')
 
     # ── Common design params (both tracks) ────────────────────────────────────
     D_mm    = _slider_btns('Nozzle diameter D [mm]', 1.0,  3.0,   DEFAULTS['D_mm'],    0.1,
