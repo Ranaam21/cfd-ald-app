@@ -43,6 +43,7 @@ import numpy as np
 
 from geometry.mesh_export import export_stl
 from geometry.parametric import ShowerheadGeometry
+from geometry.vices.tagger import REGION_WALL, REGION_INLET, REGION_NOZZLE, REGION_WAFER
 
 
 # ── Physical constants — N2 carrier at 120 °C (393 K), 1 atm ─────────────
@@ -950,4 +951,370 @@ echo "=== Done: {out.name} ==="
     print(f"  Solver:  reactingFoam  |  Turbulence: {turb_info}")
     print(f"  U_inlet: {U_inlet:.4f} m/s  |  U_nozzle: {U_nozzle:.4f} m/s")
     print(f"  beta:    {beta}  |  T_inlet: {T_inlet:.1f} K  |  pulse: {pulse_time}s")
+    return str(out)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Track 2 — VICES case generator
+# ══════════════════════════════════════════════════════════════════════════
+
+def _export_vices_stls(vices_result, geo_dir: Path) -> dict:
+    """
+    Extract region-specific STLs from VICES trimesh + face tags.
+    Returns dict of {region_name: stl_path}.
+    """
+    import trimesh as _tr
+
+    mesh  = vices_result.mesh
+    pts   = vices_result.point_cloud
+    tags  = vices_result.node_tags
+
+    # tag mesh faces by majority vote of face centroid tags
+    from geometry.vices.tagger import tag_points
+    tag_bounds = vices_result.params.get('_tag_bounds', {})
+    face_tags  = tag_points(mesh.triangles_center.astype(np.float32),
+                             tag_bounds) if tag_bounds else None
+
+    region_map = {
+        'vices_inlet':   REGION_INLET,
+        'nozzle_walls':  REGION_NOZZLE,
+        'wafer':         REGION_WAFER,
+        'vices_walls':   REGION_WALL,
+    }
+
+    stl_paths = {}
+    for name, region_id in region_map.items():
+        if face_tags is not None:
+            face_mask = face_tags == region_id
+        else:
+            # fallback: tag faces geometrically from vertex positions
+            verts = mesh.vertices
+            z = verts[:, 2]
+            z_min, z_max = z.min(), z.max()
+            fc = mesh.triangles_center
+            fz = fc[:, 2]
+            if region_id == REGION_INLET:
+                face_mask = fz > z_max - (z_max - z_min) * 0.05
+            elif region_id == REGION_WAFER:
+                face_mask = fz < z_min + (z_max - z_min) * 0.05
+            elif region_id == REGION_NOZZLE:
+                r = np.sqrt(fc[:, 0]**2 + fc[:, 1]**2)
+                D = vices_result.params.get('D', 0.002)
+                face_mask = r < D * 0.7
+            else:
+                face_mask = np.ones(len(mesh.faces), dtype=bool)
+
+        if face_mask.sum() == 0:
+            continue
+
+        sub = mesh.submesh([np.where(face_mask)[0]], append=True)
+        stl_path = geo_dir / f'{name}.stl'
+        sub.export(str(stl_path))
+        stl_paths[name] = stl_path
+
+    # always export full mesh as combined fallback
+    full_path = geo_dir / 'vices_full.stl'
+    mesh.export(str(full_path))
+    stl_paths['vices_full'] = full_path
+
+    return stl_paths
+
+
+def _blockMeshDict_vices(vices_result) -> str:
+    """blockMeshDict sized to VICES mesh bounding box + margin."""
+    verts  = vices_result.mesh.vertices
+    margin = 0.005   # 5 mm margin
+    xmin, ymin, zmin = verts.min(axis=0) - margin
+    xmax, ymax, zmax = verts.max(axis=0) + margin
+
+    nx = max(20, int((xmax - xmin) / 0.004))
+    ny = max(20, int((ymax - ymin) / 0.004))
+    nz = max(10, int((zmax - zmin) / 0.003))
+
+    return _header("dictionary", "system", "blockMeshDict") + f"""
+scale 1;
+
+vertices
+(
+    ({xmin:.6f} {ymin:.6f} {zmin:.6f})  // 0
+    ({xmax:.6f} {ymin:.6f} {zmin:.6f})  // 1
+    ({xmax:.6f} {ymax:.6f} {zmin:.6f})  // 2
+    ({xmin:.6f} {ymax:.6f} {zmin:.6f})  // 3
+    ({xmin:.6f} {ymin:.6f} {zmax:.6f})  // 4
+    ({xmax:.6f} {ymin:.6f} {zmax:.6f})  // 5
+    ({xmax:.6f} {ymax:.6f} {zmax:.6f})  // 6
+    ({xmin:.6f} {ymax:.6f} {zmax:.6f})  // 7
+);
+
+blocks
+(
+    hex (0 1 2 3 4 5 6 7) ({nx} {ny} {nz}) simpleGrading (1 1 1)
+);
+
+edges ();
+
+boundary
+(
+    inlet
+    {{
+        type patch;
+        faces ( (4 5 6 7) );
+    }}
+    outlet
+    {{
+        type patch;
+        faces ( (0 1 2 3) );
+    }}
+    outerWalls
+    {{
+        type wall;
+        faces
+        (
+            (0 1 5 4)
+            (1 2 6 5)
+            (2 3 7 6)
+            (3 0 4 7)
+        );
+    }}
+);
+
+mergePatchPairs ();
+"""
+
+
+def _snappyHexMeshDict_vices(vices_result, stl_paths: dict) -> str:
+    """snappyHexMeshDict using VICES region STLs."""
+    verts   = vices_result.mesh.vertices
+    D       = vices_result.params.get('D', 0.002)
+    z_min   = float(verts[:, 2].min())
+    z_max   = float(verts[:, 2].max())
+    inside_z = (z_min + z_max) / 2.0   # point inside fluid domain
+
+    nozzle_level = max(2, int(math.log2(0.003 / max(D, 0.0005))) + 1)
+    wall_level   = max(1, nozzle_level - 1)
+
+    # build geometry block entries for each region STL that exists
+    geo_entries = ""
+    refine_entries = ""
+    for name, path in stl_paths.items():
+        if name == 'vices_full':
+            continue
+        patch_type = 'wall' if name not in ('vices_inlet',) else 'patch'
+        level = nozzle_level if 'nozzle' in name else wall_level
+        geo_entries    += f"    {name}.stl  {{ type triSurfaceMesh; name {name}; }}\n"
+        refine_entries += (f"        {name}  {{ level ({level} {level}); "
+                           f"patchInfo {{ type {patch_type}; }} }}\n")
+
+    return _header("dictionary", "system", "snappyHexMeshDict") + f"""
+castellatedMesh true;
+snap            true;
+addLayers       false;
+
+geometry
+{{
+{geo_entries}}}
+
+castellatedMeshControls
+{{
+    maxLocalCells           1000000;
+    maxGlobalCells          3000000;
+    minRefinementCells      10;
+    maxLoadUnbalance        0.10;
+    nCellsBetweenLevels     1;
+    resolveFeatureAngle     30;
+
+    features ();
+
+    refinementSurfaces
+    {{
+{refine_entries}    }}
+
+    refinementRegions {{}}
+    locationInMesh (0 0 {inside_z:.4f});
+    allowFreeStandingZoneFaces true;
+}}
+
+snapControls
+{{
+    nSmoothPatch        3;
+    tolerance           2.0;
+    nSolveIter          10;
+    nRelaxIter          3;
+    nFeatureSnapIter    10;
+    implicitFeatureSnap false;
+    explicitFeatureSnap true;
+    multiRegionFeatureSnap false;
+}}
+
+addLayersControls
+{{
+    relativeSizes       true;
+    layers {{}}
+    expansionRatio      1.2;
+    finalLayerThickness 0.3;
+    minThickness        0.1;
+}}
+
+meshQualityControls
+{{
+    maxNonOrtho         65;
+    maxBoundarySkewness 20;
+    maxInternalSkewness 4;
+    maxConcave          80;
+    minVol              1e-13;
+    minTetQuality       1e-30;
+    minArea             -1;
+    minTwist            0.02;
+    minDeterminant      0.001;
+    minFaceWeight       0.05;
+    minVolRatio         0.01;
+    minTriangleTwist    -1;
+    nSmoothScale        4;
+    errorReduction      0.75;
+    relaxed {{ maxNonOrtho 75; }}
+}}
+
+writeFlags ( scalarLevels );
+mergeTolerance 1e-6;
+"""
+
+
+def _write_case_json_vices(case_dir: Path, vices_result,
+                            flow_rate_slm: float, beta: float,
+                            v_th: float, D_m: float, T_inlet: float,
+                            pulse_time: float, purge_time: float,
+                            turbulent: bool, Re: float):
+    params = vices_result.params
+    meta = {
+        "solver":     "reactingFoam",
+        "track":      2,
+        "geometry_type": params.get('type', 'vices'),
+        "turbulence": "kOmegaSST" if turbulent else "laminar",
+        "csg":        vices_result.csg_description,
+        "geometry":   params,
+        "process": {
+            "flow_rate_slm": flow_rate_slm,
+            "beta":          beta,
+            "v_th":          v_th,
+            "D_m":           D_m,
+            "T_inlet":       T_inlet,
+            "pulse_time":    pulse_time,
+            "purge_time":    purge_time,
+        },
+        "dimensionless": {"Re": Re},
+    }
+    with open(case_dir / "case_meta.json", "w") as f:
+        json.dump(meta, f, indent=2)
+
+
+def generate_case_vices(
+    vices_result,
+    case_dir:      str,
+    flow_rate_slm: float = 2.0,
+    beta:          float = 0.05,
+    v_th:          float = 144.0,
+    D_m:           float = D_TMA_N2,
+    T_inlet:       float = T_REF,
+    pulse_time:    float = 0.10,
+    purge_time:    float = 0.10,
+    dt:            float = 1e-4,
+) -> str:
+    """
+    Generate a complete reactingFoam OpenFOAM case from a VICES geometry.
+    Mirrors generate_case() but takes VICESResult instead of ShowerheadGeometry.
+
+    Key differences from Track 1:
+    - blockMeshDict sized from VICES mesh bounding box
+    - snappyHexMeshDict references VICES region STLs
+    - BCs use same patches: inlet / outlet / outerWalls / nozzle_walls / wafer
+    """
+    params     = vices_result.params
+    D          = params.get('D', 0.002)
+    D_plate    = params.get('D_plate', 0.150)
+    n_nozzles  = params.get('n_nozzles', 1)
+
+    out        = Path(case_dir)
+    U_inlet    = _flow_rate_to_velocity(flow_rate_slm, D_plate)
+    U_nozzle   = _nozzle_velocity(flow_rate_slm, D, n_nozzles)
+    turbulent  = _is_turbulent(U_nozzle, D)
+    Re         = _reynolds(U_nozzle, D)
+
+    if out.exists():
+        _has_results = any(
+            True for d in out.iterdir()
+            if d.is_dir() and _is_float_dir(d.name)
+            and float(d.name) > 0 and (d / "U").exists()
+        )
+        if _has_results:
+            return str(out)
+        shutil.rmtree(out)
+
+    (out / "0").mkdir(parents=True)
+    (out / "constant" / "polyMesh").mkdir(parents=True)
+    (out / "system").mkdir(parents=True)
+    (out / "geometry").mkdir(parents=True)
+
+    # ── 0/ fields — identical to Track 1 ─────────────────────────────────
+    (out / "0" / "U").write_text(_field_U(U_inlet))
+    (out / "0" / "p").write_text(_field_p())
+    (out / "0" / "T").write_text(_field_T(T_inlet))
+    (out / "0" / "TMA").write_text(_field_TMA(pulse_time))
+    (out / "0" / "N2").write_text(_field_N2())
+    if turbulent:
+        (out / "0" / "k").write_text(_field_k(U_nozzle, D))
+        (out / "0" / "omega").write_text(_field_omega(U_nozzle, D))
+
+    # ── constant/ — identical to Track 1 ─────────────────────────────────
+    (out / "constant" / "thermophysicalProperties").write_text(
+        _thermophysicalProperties(T_inlet))
+    (out / "constant" / "reactions").write_text(_reactions(beta, v_th, D_m))
+    (out / "constant" / "momentumTransport").write_text(_momentumTransport(turbulent))
+    (out / "constant" / "thermophysicalTransport").write_text(_thermophysicalTransport())
+
+    # ── system/ — VICES-specific blockMesh + snappyHexMesh ───────────────
+    (out / "system" / "blockMeshDict").write_text(_blockMeshDict_vices(vices_result))
+    (out / "system" / "controlDict").write_text(_controlDict(pulse_time, purge_time, dt))
+    (out / "system" / "fvSchemes").write_text(_fvSchemes(turbulent))
+    (out / "system" / "fvSolution").write_text(_fvSolution(turbulent))
+
+    # ── VICES region STLs ─────────────────────────────────────────────────
+    stl_paths = _export_vices_stls(vices_result, out / "geometry")
+    (out / "system" / "snappyHexMeshDict").write_text(
+        _snappyHexMeshDict_vices(vices_result, stl_paths))
+
+    # ── Metadata ──────────────────────────────────────────────────────────
+    _write_case_json_vices(out, vices_result, flow_rate_slm, beta,
+                           v_th, D_m, T_inlet, pulse_time, purge_time,
+                           turbulent, Re)
+
+    # ── run.sh ────────────────────────────────────────────────────────────
+    turb_info = f"k-omega SST (Re={Re:.0f})" if turbulent else f"laminar (Re={Re:.0f})"
+    stl_names = " ".join(p.name for p in stl_paths.values())
+    run_sh = f"""#!/bin/bash
+# Auto-generated run script — reactingFoam (Track 2 VICES)
+# Case: {out.name}  |  Turbulence: {turb_info}
+set -e
+cd "$(dirname "$0")"
+
+mkdir -p constant/triSurface
+cp geometry/*.stl constant/triSurface/
+
+echo "=== blockMesh ==="
+blockMesh
+
+echo "=== snappyHexMesh ==="
+snappyHexMesh -overwrite
+
+echo "=== reactingFoam ==="
+reactingFoam
+
+echo "=== Done: {out.name} ==="
+"""
+    run_path = out / "run.sh"
+    run_path.write_text(run_sh)
+    run_path.chmod(0o755)
+
+    print(f"VICES case generated: {out}")
+    print(f"  Type: {params.get('type','?')}  |  CSG: {vices_result.csg_description[:60]}...")
+    print(f"  Turbulence: {turb_info}  |  n_nozzles: {n_nozzles}")
     return str(out)
