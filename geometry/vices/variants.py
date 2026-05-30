@@ -77,6 +77,8 @@ def _finalise(tree, bounds_tuple, tag_bounds, params, csg_desc,
                                  REGION_NOZZLE, REGION_WAFER]):
         nf[tags == region, i] = 1.0
     gf = np.zeros(18, dtype=np.float32)
+    # store nozzle_centers in params so case_generator can extract nozzle wall STL
+    params['nozzle_centers'] = tag_bounds.get('nozzle_centers', [])
     return VICESResult(accepted=True, mesh=mesh, point_cloud=pts,
                        node_tags=tags, node_features=nf,
                        global_features=gf, params=params,

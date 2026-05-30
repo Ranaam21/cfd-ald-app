@@ -958,92 +958,113 @@ echo "=== Done: {out.name} ==="
 # Track 2 — VICES case generator
 # ══════════════════════════════════════════════════════════════════════════
 
-def _export_vices_stls(vices_result, geo_dir: Path) -> dict:
+def _make_wafer_disk_stl(D_plate: float, geo_dir: Path) -> Path:
+    """Generate a flat circular disk STL at z=0 representing the wafer surface."""
+    import trimesh as _tr
+    n = 48
+    angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    rim = np.column_stack([D_plate / 2 * np.cos(angles),
+                           D_plate / 2 * np.sin(angles),
+                           np.zeros(n)])
+    center = np.array([[0.0, 0.0, 0.0]])
+    verts  = np.vstack([rim, center])
+    faces  = np.array([[n, i, (i + 1) % n] for i in range(n)])
+    disk   = _tr.Trimesh(vertices=verts, faces=faces, process=False)
+    path   = geo_dir / 'wafer_plane.stl'
+    disk.export(str(path))
+    return path
+
+
+def _export_vices_stls(vices_result, geo_dir: Path, standoff: float = 0.020) -> dict:
     """
-    Extract region-specific STLs from VICES trimesh + face tags.
-    Returns dict of {region_name: stl_path}.
+    Export VICES mesh faces as wall-only STLs for snappyHexMesh.
+
+    Strategy (correct approach):
+    - Export only WALL faces from the VICES mesh (outer walls + nozzle bores)
+    - Exclude the top opening (inlet region) — handled by blockMesh inlet patch
+    - Exclude the nozzle exits at z≈0 — open interface to standoff region
+    - Add a separate wafer_plane.stl disk at z=0
+    - snappyHexMesh cuts these wall STLs from the background mesh
+    - blockMesh inlet/outlet patches remain intact (locationInMesh in standoff)
     """
     import trimesh as _tr
 
-    mesh  = vices_result.mesh
-    pts   = vices_result.point_cloud
-    tags  = vices_result.node_tags
+    mesh   = vices_result.mesh
+    fc     = mesh.triangles_center.astype(np.float32)
+    D      = vices_result.params.get('D', 0.002)
+    D_plate = vices_result.params.get('D_plate', 0.150)
 
-    # tag mesh faces by majority vote of face centroid tags
-    from geometry.vices.tagger import tag_points
-    tag_bounds = vices_result.params.get('_tag_bounds', {})
-    face_tags  = tag_points(mesh.triangles_center.astype(np.float32),
-                             tag_bounds) if tag_bounds else None
+    z      = mesh.vertices[:, 2]
+    z_min, z_max = float(z.min()), float(z.max())
+    z_range = z_max - z_min
 
-    region_map = {
-        'vices_inlet':   REGION_INLET,
-        'nozzle_walls':  REGION_NOZZLE,
-        'wafer':         REGION_WAFER,
-        'vices_walls':   REGION_WALL,
-    }
+    # --- face masks ---
+    fz = fc[:, 2]
+
+    # top opening (inlet): top 5% of z — gas enters here, NOT a wall
+    top_mask    = fz > z_max - z_range * 0.05
+
+    # nozzle exits at z≈0: faces at very bottom of VICES mesh near nozzle centres
+    bottom_mask = fz < z_min + z_range * 0.05
+
+    # nozzle bore walls: faces close to nozzle axes at intermediate z
+    nozzle_centers = vices_result.params.get('nozzle_centers',
+                      [(0.0, 0.0)])   # fallback: centre only
+    nozzle_mask = np.zeros(len(fc), dtype=bool)
+    for (nx, ny) in nozzle_centers:
+        r2 = (fc[:, 0] - nx)**2 + (fc[:, 1] - ny)**2
+        nozzle_mask |= (r2 < (D * 0.8)**2) & ~top_mask & ~bottom_mask
+
+    # general wall faces: everything that is NOT inlet/exit/nozzle
+    wall_mask = ~top_mask & ~bottom_mask & ~nozzle_mask
 
     stl_paths = {}
-    for name, region_id in region_map.items():
-        if face_tags is not None:
-            face_mask = face_tags == region_id
-        else:
-            # fallback: tag faces geometrically from vertex positions
-            verts = mesh.vertices
-            z = verts[:, 2]
-            z_min, z_max = z.min(), z.max()
-            fc = mesh.triangles_center
-            fz = fc[:, 2]
-            if region_id == REGION_INLET:
-                face_mask = fz > z_max - (z_max - z_min) * 0.05
-            elif region_id == REGION_WAFER:
-                face_mask = fz < z_min + (z_max - z_min) * 0.05
-            elif region_id == REGION_NOZZLE:
-                r = np.sqrt(fc[:, 0]**2 + fc[:, 1]**2)
-                D = vices_result.params.get('D', 0.002)
-                face_mask = r < D * 0.7
-            else:
-                face_mask = np.ones(len(mesh.faces), dtype=bool)
-
-        if face_mask.sum() == 0:
+    for name, mask in [('vices_walls', wall_mask),
+                       ('nozzle_walls', nozzle_mask)]:
+        if mask.sum() == 0:
             continue
+        sub  = mesh.submesh([np.where(mask)[0]], append=True)
+        path = geo_dir / f'{name}.stl'
+        sub.export(str(path))
+        stl_paths[name] = path
 
-        sub = mesh.submesh([np.where(face_mask)[0]], append=True)
-        stl_path = geo_dir / f'{name}.stl'
-        sub.export(str(stl_path))
-        stl_paths[name] = stl_path
-
-    # always export full mesh as combined fallback
-    full_path = geo_dir / 'vices_full.stl'
-    mesh.export(str(full_path))
-    stl_paths['vices_full'] = full_path
+    # wafer disk at z=0
+    stl_paths['wafer_plane'] = _make_wafer_disk_stl(D_plate, geo_dir)
 
     return stl_paths
 
 
-def _blockMeshDict_vices(vices_result) -> str:
-    """blockMeshDict sized to VICES mesh bounding box + margin."""
-    verts  = vices_result.mesh.vertices
-    margin = 0.005   # 5 mm margin
-    xmin, ymin, zmin = verts.min(axis=0) - margin
-    xmax, ymax, zmax = verts.max(axis=0) + margin
+def _blockMeshDict_vices(vices_result, standoff: float = 0.020) -> str:
+    """
+    blockMeshDict covering the full domain: plenum + faceplate + standoff.
+    Extends from z=-(standoff+margin) below wafer to z=z_vices_top+margin above plenum.
+    blockMesh inlet/outlet patches survive because locationInMesh is in standoff region.
+    """
+    verts   = vices_result.mesh.vertices
+    D_plate = vices_result.params.get('D_plate', 0.150)
+    margin  = 0.005
+    R       = D_plate / 2 + margin
 
-    nx = max(20, int((xmax - xmin) / 0.004))
-    ny = max(20, int((ymax - ymin) / 0.004))
-    nz = max(10, int((zmax - zmin) / 0.003))
+    z_top   = float(verts[:, 2].max()) + margin
+    z_bot   = -(standoff + margin)
+
+    nx = max(20, int(2 * R / 0.004))
+    ny = nx
+    nz = max(15, int((z_top - z_bot) / 0.003))
 
     return _header("dictionary", "system", "blockMeshDict") + f"""
 scale 1;
 
 vertices
 (
-    ({xmin:.6f} {ymin:.6f} {zmin:.6f})  // 0
-    ({xmax:.6f} {ymin:.6f} {zmin:.6f})  // 1
-    ({xmax:.6f} {ymax:.6f} {zmin:.6f})  // 2
-    ({xmin:.6f} {ymax:.6f} {zmin:.6f})  // 3
-    ({xmin:.6f} {ymin:.6f} {zmax:.6f})  // 4
-    ({xmax:.6f} {ymin:.6f} {zmax:.6f})  // 5
-    ({xmax:.6f} {ymax:.6f} {zmax:.6f})  // 6
-    ({xmin:.6f} {ymax:.6f} {zmax:.6f})  // 7
+    ({-R:.6f} {-R:.6f} {z_bot:.6f})  // 0
+    ( {R:.6f} {-R:.6f} {z_bot:.6f})  // 1
+    ( {R:.6f}  {R:.6f} {z_bot:.6f})  // 2
+    ({-R:.6f}  {R:.6f} {z_bot:.6f})  // 3
+    ({-R:.6f} {-R:.6f} {z_top:.6f})  // 4
+    ( {R:.6f} {-R:.6f} {z_top:.6f})  // 5
+    ( {R:.6f}  {R:.6f} {z_top:.6f})  // 6
+    ({-R:.6f}  {R:.6f} {z_top:.6f})  // 7
 );
 
 blocks
@@ -1082,28 +1103,28 @@ mergePatchPairs ();
 """
 
 
-def _snappyHexMeshDict_vices(vices_result, stl_paths: dict) -> str:
-    """snappyHexMeshDict using VICES region STLs."""
-    verts   = vices_result.mesh.vertices
-    D       = vices_result.params.get('D', 0.002)
-    z_min   = float(verts[:, 2].min())
-    z_max   = float(verts[:, 2].max())
-    inside_z = (z_min + z_max) / 2.0   # point inside fluid domain
-
+def _snappyHexMeshDict_vices(vices_result, stl_paths: dict,
+                              standoff: float = 0.020) -> str:
+    """
+    snappyHexMeshDict using VICES wall STLs.
+    locationInMesh is in the standoff region (below faceplate, above wafer)
+    so blockMesh inlet/outlet/outerWalls patches survive snappyHexMesh.
+    """
+    D = vices_result.params.get('D', 0.002)
     nozzle_level = max(2, int(math.log2(0.003 / max(D, 0.0005))) + 1)
     wall_level   = max(1, nozzle_level - 1)
 
-    # build geometry block entries for each region STL that exists
-    geo_entries = ""
+    geo_entries    = ""
     refine_entries = ""
     for name, path in stl_paths.items():
-        if name == 'vices_full':
-            continue
-        patch_type = 'wall' if name not in ('vices_inlet',) else 'patch'
         level = nozzle_level if 'nozzle' in name else wall_level
+        p_type = 'wall'
         geo_entries    += f"    {name}.stl  {{ type triSurfaceMesh; name {name}; }}\n"
         refine_entries += (f"        {name}  {{ level ({level} {level}); "
-                           f"patchInfo {{ type {patch_type}; }} }}\n")
+                           f"patchInfo {{ type {p_type}; }} }}\n")
+
+    # locationInMesh: inside standoff region (below faceplate z=0, above outlet)
+    loc_z = -standoff / 2.0
 
     return _header("dictionary", "system", "snappyHexMeshDict") + f"""
 castellatedMesh true;
@@ -1130,7 +1151,7 @@ castellatedMeshControls
 {refine_entries}    }}
 
     refinementRegions {{}}
-    locationInMesh (0 0 {inside_z:.4f});
+    locationInMesh (0 0 {loc_z:.6f});
     allowFreeStandingZoneFaces true;
 }}
 
@@ -1179,11 +1200,13 @@ mergeTolerance 1e-6;
 """
 
 
-# ── Track 2 BC writers — use VICES patch names ────────────────────────────
-# VICES patches: inlet, outlet, outerWalls (blockMesh)
-#                vices_walls, vices_inlet, nozzle_walls, wafer (STL)
-
-_VICES_WALLS = ["outerWalls", "vices_walls", "vices_inlet"]
+# ── Track 2 BC writers ────────────────────────────────────────────────────
+# Patches after snappyHexMesh (correct approach):
+#   inlet, outlet, outerWalls  — from blockMesh (survive because locationInMesh
+#                                  is in standoff region, outside VICES body)
+#   vices_walls                — VICES outer wall STL
+#   nozzle_walls               — VICES nozzle bore STL
+#   wafer_plane                — wafer disk STL at z=0
 
 def _v2_field_U(U_inlet: float) -> str:
     return _header("volVectorField", "0", "U") + f"""
@@ -1195,9 +1218,8 @@ boundaryField
     outlet          {{ type pressureInletOutletVelocity; value uniform (0 0 0); }}
     outerWalls      {{ type noSlip; }}
     vices_walls     {{ type noSlip; }}
-    vices_inlet     {{ type noSlip; }}
     nozzle_walls    {{ type noSlip; }}
-    wafer           {{ type noSlip; }}
+    wafer_plane     {{ type noSlip; }}
 }}
 """
 
@@ -1211,9 +1233,8 @@ boundaryField
     outlet          { type fixedValue; value uniform 101325; }
     outerWalls      { type zeroGradient; }
     vices_walls     { type zeroGradient; }
-    vices_inlet     { type zeroGradient; }
     nozzle_walls    { type zeroGradient; }
-    wafer           { type zeroGradient; }
+    wafer_plane     { type zeroGradient; }
 }
 """
 
@@ -1227,9 +1248,8 @@ boundaryField
     outlet          {{ type zeroGradient; }}
     outerWalls      {{ type zeroGradient; }}
     vices_walls     {{ type zeroGradient; }}
-    vices_inlet     {{ type zeroGradient; }}
     nozzle_walls    {{ type zeroGradient; }}
-    wafer           {{ type fixedValue; value uniform {T_inlet - 5.0:.1f}; }}
+    wafer_plane     {{ type fixedValue; value uniform {T_inlet - 5.0:.1f}; }}
 }}
 """
 
@@ -1255,9 +1275,8 @@ boundaryField
     outlet          {{ type inletOutlet; inletValue uniform 0; value uniform 0; }}
     outerWalls      {{ type zeroGradient; }}
     vices_walls     {{ type zeroGradient; }}
-    vices_inlet     {{ type zeroGradient; }}
     nozzle_walls    {{ type zeroGradient; }}
-    wafer           {{ type fixedValue; value uniform 0; }}
+    wafer_plane     {{ type fixedValue; value uniform 0; }}
 }}
 """
 
@@ -1271,9 +1290,8 @@ boundaryField
     outlet          { type inletOutlet; inletValue uniform 1; value uniform 1; }
     outerWalls      { type zeroGradient; }
     vices_walls     { type zeroGradient; }
-    vices_inlet     { type zeroGradient; }
     nozzle_walls    { type zeroGradient; }
-    wafer           { type zeroGradient; }
+    wafer_plane     { type zeroGradient; }
 }
 """
 
@@ -1289,9 +1307,8 @@ boundaryField
     outlet          {{ type zeroGradient; }}
     outerWalls      {{ type kqRWallFunction; value uniform {k0:.6f}; }}
     vices_walls     {{ type kqRWallFunction; value uniform {k0:.6f}; }}
-    vices_inlet     {{ type kqRWallFunction; value uniform {k0:.6f}; }}
     nozzle_walls    {{ type kqRWallFunction; value uniform {k0:.6f}; }}
-    wafer           {{ type kqRWallFunction; value uniform {k0:.6f}; }}
+    wafer_plane     {{ type kqRWallFunction; value uniform {k0:.6f}; }}
 }}
 """
 
@@ -1311,9 +1328,8 @@ boundaryField
     outlet          {{ type zeroGradient; }}
     outerWalls      {{ type omegaWallFunction; value uniform {om0:.4f}; }}
     vices_walls     {{ type omegaWallFunction; value uniform {om0:.4f}; }}
-    vices_inlet     {{ type omegaWallFunction; value uniform {om0:.4f}; }}
     nozzle_walls    {{ type omegaWallFunction; value uniform {om0:.4f}; }}
-    wafer           {{ type omegaWallFunction; value uniform {om0:.4f}; }}
+    wafer_plane     {{ type omegaWallFunction; value uniform {om0:.4f}; }}
 }}
 """
 
@@ -1357,15 +1373,17 @@ def generate_case_vices(
     pulse_time:    float = 0.10,
     purge_time:    float = 0.10,
     dt:            float = 1e-4,
+    standoff:      float = 0.020,
 ) -> str:
     """
     Generate a complete reactingFoam OpenFOAM case from a VICES geometry.
-    Mirrors generate_case() but takes VICESResult instead of ShowerheadGeometry.
 
-    Key differences from Track 1:
-    - blockMeshDict sized from VICES mesh bounding box
-    - snappyHexMeshDict references VICES region STLs
-    - BCs use same patches: inlet / outlet / outerWalls / nozzle_walls / wafer
+    Correct approach (Option A):
+    - blockMeshDict extends below z=0 to include standoff + wafer region
+    - VICES STLs export WALL surfaces only (no top/bottom openings)
+    - wafer_plane.stl generated analytically at z=0
+    - locationInMesh in standoff region → blockMesh inlet/outlet survive
+    - BCs: inlet/outlet/outerWalls (blockMesh) + vices_walls/nozzle_walls/wafer_plane (STL)
     """
     params     = vices_result.params
     D          = params.get('D', 0.002)
@@ -1413,15 +1431,16 @@ def generate_case_vices(
     (out / "constant" / "thermophysicalTransport").write_text(_thermophysicalTransport())
 
     # ── system/ — VICES-specific blockMesh + snappyHexMesh ───────────────
-    (out / "system" / "blockMeshDict").write_text(_blockMeshDict_vices(vices_result))
+    (out / "system" / "blockMeshDict").write_text(
+        _blockMeshDict_vices(vices_result, standoff=standoff))
     (out / "system" / "controlDict").write_text(_controlDict(pulse_time, purge_time, dt))
     (out / "system" / "fvSchemes").write_text(_fvSchemes(turbulent))
     (out / "system" / "fvSolution").write_text(_fvSolution(turbulent))
 
-    # ── VICES region STLs ─────────────────────────────────────────────────
-    stl_paths = _export_vices_stls(vices_result, out / "geometry")
+    # ── VICES wall-only STLs + wafer disk ─────────────────────────────────
+    stl_paths = _export_vices_stls(vices_result, out / "geometry", standoff=standoff)
     (out / "system" / "snappyHexMeshDict").write_text(
-        _snappyHexMeshDict_vices(vices_result, stl_paths))
+        _snappyHexMeshDict_vices(vices_result, stl_paths, standoff=standoff))
 
     # ── Metadata ──────────────────────────────────────────────────────────
     _write_case_json_vices(out, vices_result, flow_rate_slm, beta,
