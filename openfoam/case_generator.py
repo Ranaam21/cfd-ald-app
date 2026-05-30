@@ -1408,6 +1408,8 @@ def generate_case_vices(
         _thermophysicalProperties(T_inlet))
     (out / "constant" / "reactions").write_text(_reactions(beta, v_th, D_m))
     (out / "constant" / "momentumTransport").write_text(_momentumTransport(turbulent))
+    (out / "constant" / "turbulenceProperties").write_text(
+        _momentumTransport(turbulent).replace('"momentumTransport"', '"turbulenceProperties"'))
     (out / "constant" / "thermophysicalTransport").write_text(_thermophysicalTransport())
 
     # ── system/ — VICES-specific blockMesh + snappyHexMesh ───────────────
