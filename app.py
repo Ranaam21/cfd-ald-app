@@ -33,6 +33,7 @@ if not DRIVE_BASE.exists():
     DRIVE_BASE = _LOCAL_BASE                      # local fallback when Drive isn't mounted
 CKPT        = DRIVE_BASE / 'checkpoints' / 'multihead' / 'multihead_final.pt'
 OPT_JSON    = DRIVE_BASE / 'checkpoints' / 'optimizer' / 'optimizer_results.json'
+OPT2_JSON   = DRIVE_BASE / 'checkpoints' / 'optimizer' / 'track2_optimizer_results.json'
 GR_JSON     = DRIVE_BASE / 'checkpoints' / 'guardrail' / 'guardrail_results.json'
 GL_JSON     = DRIVE_BASE / 'checkpoints' / 'geometry_loop' / 'geometry_loop_results.json'
 if torch.cuda.is_available():
@@ -688,8 +689,9 @@ model, norm, cfg = load_model()
 opt_data = load_json(str(OPT_JSON))
 gr_data  = load_json(str(GR_JSON))
 
-tab_pred, tab_opt, tab_gr, tab_geo = st.tabs(
-    ['Predictions', 'Optimizer / Pareto', 'Guardrail Report', 'Pareto Designs']
+tab_pred, tab_opt, tab_gr, tab_geo, tab_t2 = st.tabs(
+    ['Predictions', 'Optimizer / Pareto', 'Guardrail Report',
+     'Pareto Designs', 'Track 2 — VICES']
 )
 
 # ── Tab 1: Predictions ─────────────────────────────────────────────────────
@@ -1311,3 +1313,136 @@ with tab_geo:
                 use_container_width=True,
                 hide_index=True,
             )
+
+# ── Tab 5: Track 2 — VICES ────────────────────────────────────────────────
+with tab_t2:
+    def load_track2_results():
+        if OPT2_JSON.exists():
+            return json.load(open(OPT2_JSON))
+        return None
+
+    t2 = load_track2_results()
+
+    if t2 is None:
+        st.info(
+            'Track 2 optimizer results not found. '
+            'Run `python3 optimization/track2_optimizer.py` to generate them.'
+        )
+    else:
+        surr = t2.get('surrogate', {})
+        st.markdown('## Track 2 — VICES Topology Optimizer')
+        st.caption(
+            'Voxel-Implicit Computational Engineering Synthesis (VICES): '
+            'CSG boolean tree geometry synthesis via SDF + Marching Cubes, '
+            'exploring 4 topology types across the Catalan-enumerated design space.'
+        )
+
+        # ── Key metrics ──────────────────────────────────────────────────────
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric('Track 1 best TMA_UI', f"{t2.get('track1_best_tma_ui', 0):.3f}",
+                  help='Best TMA uniformity index found by Track 1 hex-array optimizer.')
+        m2.metric('Track 2 best TMA_UI', f"{t2.get('track2_best_tma_ui', 0):.3f}",
+                  help='Best TMA uniformity index found by Track 2 topology optimizer.')
+        imp = t2.get('improvement', 0)
+        m3.metric('Improvement', f"{imp:+.3f}",
+                  delta=f"{imp:+.3f}",
+                  help='Track 2 best minus Track 1 best TMA_UI.')
+        m4.metric('Surrogate OOF ρ', f"{surr.get('oof_rho', 0):.3f}",
+                  help='Out-of-fold Spearman rank correlation of combined KPI surrogate '
+                       '(trained on Track 1 + Track 2 cases).')
+
+        st.divider()
+
+        # ── Best design per topology type ─────────────────────────────────────
+        st.subheader('Best Design per Topology Type')
+        bpt = t2.get('best_per_type', {})
+        type_descriptions = {
+            'A_baffled':  'Internal baffle annulus redistributes flow before nozzle plate',
+            'B_conical':  'Central cone deflects inlet jet radially for uniform distribution',
+            'C_annular':  'Nozzles in concentric rings — different spatial distribution to hex',
+            'D_twozone':  'Annular divider splits plenum into inner/outer flow zones',
+        }
+        type_colors = {
+            'A_baffled': '#e74c3c', 'B_conical': '#3498db',
+            'C_annular': '#2ecc71', 'D_twozone': '#f39c12',
+        }
+
+        cols = st.columns(4)
+        for ci, (name, d) in enumerate(bpt.items()):
+            with cols[ci]:
+                with st.container(border=True):
+                    color = type_colors.get(name, '#888')
+                    st.markdown(
+                        f'<div style="background:{color};color:white;'
+                        f'padding:4px 8px;border-radius:4px;font-weight:bold;'
+                        f'font-size:13px">{name}</div>', unsafe_allow_html=True)
+                    st.caption(type_descriptions.get(name, ''))
+                    st.metric('TMA_UI', f"{d.get('TMA_UI', 0):.3f}")
+                    st.write(f"D = **{d.get('D_mm', 0):.1f} mm**")
+                    st.write(f"Q = **{d.get('Q_slm', 0):.1f} slm**")
+                    st.write(f"Re = **{d.get('Re', 0):.0f}**")
+                    st.write(f"Nozzles = **{d.get('n_nozzles', 0)}**")
+
+        st.divider()
+
+        # ── Pareto comparison plot ────────────────────────────────────────────
+        st.subheader('Pareto Front: Track 2 vs Track 1')
+        fig_path = _LOCAL_BASE / 'checkpoints' / 'optimizer' / 'track2_pareto.png'
+        if fig_path.exists():
+            st.image(str(fig_path), use_container_width=True)
+        else:
+            st.info('Pareto plot not found — re-run track2_optimizer.py.')
+
+        # ── Pareto design table ───────────────────────────────────────────────
+        st.subheader('Top Track 2 Pareto Designs')
+        pareto = t2.get('track2_pareto', [])
+        if pareto:
+            rows = []
+            for i, d in enumerate(pareto[:10]):
+                rows.append({
+                    'Rank':       i + 1,
+                    'Type':       d.get('geom_name', '?'),
+                    'TMA_UI':     round(d.get('TMA_UI', 0), 3),
+                    'D [mm]':     round(d.get('D_mm', 0), 1),
+                    'Q [slm]':    round(d.get('Q_slm', 0), 2),
+                    'Re':         int(d.get('Re', 0)),
+                    'n_nozzles':  int(d.get('n_nozzles', 0)),
+                    'extra_param': round(d.get('extra_param', 0), 3),
+                })
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        st.divider()
+
+        # ── CSG topology explanation ───────────────────────────────────────────
+        with st.expander('About Track 2 VICES Geometry Synthesis'):
+            st.markdown("""
+**Track 2 — VICES (Voxel-Implicit Computational Engineering Synthesis)**
+
+Geometry is synthesised using a CSG (Constructive Solid Geometry) pipeline:
+1. **SDF primitives** — Cylinder, Box, Cone, Sphere defined as Signed Distance Fields
+2. **Boolean operations** — Union ∪, Subtract −, Intersect ∩ applied to SDF primitives
+3. **Marching Cubes** — SDF voxel grid → triangle mesh (15-case lookup table, 256 voxel configurations)
+4. **Point cloud** — mesh surface sampled → 80,000 points → GNN surrogate inference
+
+**Catalan number design space:** For n primitives, the number of distinct CSG tree topologies = C(n−1).
+With 6 primitives: C(5) = 42 distinct topologies before varying any dimensions.
+
+| Type | CSG Tree | Key feature |
+|---|---|---|
+| A — Baffled | Cylinder − BaffleAnnulus − Nozzles | Flow redistribution before nozzle plate |
+| B — Conical | Cylinder − Cone − Nozzles | Radial jet deflection |
+| C — Annular | Cylinder − RingNozzles | Concentric ring pattern |
+| D — Two-zone | Cylinder − DividerRing − Nozzles | Split inner/outer flow paths |
+
+**Why Track 2 outperforms Track 1:** Track 1 is constrained to hex nozzle topology —
+it can only vary 5 continuous parameters within a fixed geometry family.
+Track 2 searches across fundamentally different topologies, unlocking designs
+that the parametric approach cannot represent.
+            """)
+
+        # ── Surrogate info ────────────────────────────────────────────────────
+        st.caption(
+            f"Combined KPI surrogate: {surr.get('n_cases','?')} cases · "
+            f"{surr.get('in_dim','?')} features · "
+            f"5-fold CV OOF R²={surr.get('oof_r2',0):.3f} ρ={surr.get('oof_rho',0):.3f}"
+        )
