@@ -29,21 +29,56 @@ EPOCHS  = 2000
 LR      = 3e-3
 
 # ── 1. Load all 83 cases ─────────────────────────────────────────────────────
-print('Loading KPIs from HDF5 files...')
+print('Loading KPIs + wafer-plane flow features from HDF5 files...')
 X_raw, Y_raw = [], []
+WAFER_FRAC = 0.05
+
 for h5_path in sorted(HDF5_DIR.glob('*.h5')):
     with h5py.File(h5_path, 'r') as f:
-        X_raw.append(f['inputs/global'][:])
-        Y_raw.append(float(f['uniformity'].attrs['uniformity_index']))
+        gf     = f['inputs/global'][:]
+        y_fields = f['outputs/node_fields'][:]   # [N, 6] Ux,Uy,Uz,p,T,TMA
+        coords = f['coords'][:]
+        tma_ui = float(f['uniformity'].attrs['uniformity_index'])
 
-X = np.array(X_raw, dtype=np.float32)
-Y = np.array(Y_raw,  dtype=np.float32)
-print(f'  {len(Y)} cases  |  TMA_UI: min={Y.min():.3f} max={Y.max():.3f} '
-      f'mean={Y.mean():.3f} std={Y.std():.3f}')
+    # wafer-plane mask — bottom WAFER_FRAC of z range
+    z = coords[:, 2]
+    z_min, z_max = z.min(), z.max()
+    z_band = max(0.002, (z_max - z_min) * WAFER_FRAC)
+    mask = z < (z_min + z_band)
+    if mask.sum() < 10:
+        mask = z < (z_min + (z_max - z_min) * 0.10)
+
+    # Step 1 — extract wafer-plane flow statistics from CFD ground truth
+    Uz_w  = y_fields[mask, 2]   # vertical velocity at wafer
+    p_w   = y_fields[mask, 3]   # pressure at wafer
+    T_w   = y_fields[mask, 4]   # temperature at wafer
+    TMA_w = y_fields[mask, 5]   # TMA at wafer
+
+    eps = 1e-12
+    flow_feats = np.array([
+        float(Uz_w.mean()),
+        float(Uz_w.std()),
+        float(np.clip(1 - Uz_w.std() / (abs(Uz_w.mean()) + eps), 0, 1)),  # Uz_UI
+        float(p_w.mean()),
+        float(p_w.std()),
+        float(T_w.mean()),
+        float(T_w.std()),
+        float(TMA_w.mean()),
+        float(TMA_w.std()),
+    ], dtype=np.float32)
+
+    # Step 2 — concatenate: 18 global + 9 wafer-plane = 27 features
+    X_raw.append(np.concatenate([gf, flow_feats]))
+    Y_raw.append(tma_ui)
+
+X = np.array(X_raw, dtype=np.float32)   # [83, 27]
+Y = np.array(Y_raw,  dtype=np.float32)  # [83]
+print(f'  {len(Y)} cases  |  Features: {X.shape[1]} (18 global + 9 wafer-plane flow stats)')
+print(f'  TMA_UI: min={Y.min():.3f} max={Y.max():.3f} mean={Y.mean():.3f} std={Y.std():.3f}')
 
 # ── 2. MLP ───────────────────────────────────────────────────────────────────
 class KpiMLP(nn.Module):
-    def __init__(self, in_dim=18, hidden=64, n_layers=3):
+    def __init__(self, in_dim=27, hidden=64, n_layers=3):
         super().__init__()
         dims = [in_dim] + [hidden] * n_layers + [1]
         layers = []
@@ -190,7 +225,7 @@ ax.set_ylabel('TMA_UI')
 ax.set_title(f'Design ranking (OOF)\nρ={rho_oof:.3f}  — all 83 cases')
 ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
 
-plt.suptitle(f'Option B — {K_FOLDS}-Fold CV + Ensemble KPI Surrogate (TMA_UI)',
+plt.suptitle(f'Multi-fidelity KPI Surrogate — {K_FOLDS}-Fold CV + Ensemble (27 features → TMA_UI)',
              fontsize=13, fontweight='bold')
 plt.tight_layout()
 out_path = OUT_DIR / 'kpi_surrogate_kfold.png'
@@ -199,12 +234,14 @@ print(f'\nPlot saved → {out_path}')
 plt.close()
 
 # ── 7. Save ensemble ──────────────────────────────────────────────────────────
-save_path = Path(__file__).parent.parent / 'checkpoints/multihead/kpi_surrogate_ensemble.pt'
+save_path = Path(__file__).parent.parent / 'checkpoints/multihead/kpi_surrogate_multifidelity.pt'
 torch.save({
-    'models':  [m.state_dict() for m in fold_models],
-    'scalers': [{'mean': sc.mean_, 'std': sc.scale_} for sc in fold_scalers],
-    'k_folds': K_FOLDS,
-    'oof_r2':  r2_oof,
-    'oof_rho': rho_oof,
+    'models':      [m.state_dict() for m in fold_models],
+    'scalers':     [{'mean': sc.mean_, 'std': sc.scale_} for sc in fold_scalers],
+    'k_folds':     K_FOLDS,
+    'in_dim':      X.shape[1],
+    'oof_r2':      r2_oof,
+    'oof_rho':     rho_oof,
+    'feature_note': '18 global + 9 wafer-plane CFD stats (Uz,p,T,TMA mean/std + Uz_UI)',
 }, save_path)
 print(f'Ensemble saved → {save_path}')
