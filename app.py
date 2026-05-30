@@ -494,6 +494,92 @@ def _cached_inference(d_mm, pitch_d, q_slm, H_plenum, t_face, standoff,
 
 
 @st.cache_data(show_spinner=False)
+def _cached_inference_vices(vices_type_char, d_mm, pitch_d, q_slm,
+                             H_plenum, t_face, vices_extra,
+                             re_max, ma_max, eu_max, pr_min, pr_max,
+                             peh_max, sc_min, sc_max, pem_max, da_min, da_max):
+    """Track 2 inference: build VICES geometry → GNN surrogate."""
+    from geometry.vices.variants import (build_type_a_baffled, build_type_b_conical,
+                                          build_type_c_annular, build_type_d_twozone)
+    model, norm, cfg = load_model()
+
+    # Build VICES geometry
+    kw = dict(D_mm=d_mm, pitch_D=pitch_d, H_plenum_mm=H_plenum * 1000,
+              t_face_mm=t_face * 1000, D_plate_mm=150.0, resolution=48)
+    if vices_type_char == 'A':
+        result = build_type_a_baffled(**kw, baffle_frac=vices_extra)
+    elif vices_type_char == 'B':
+        result = build_type_b_conical(**kw, cone_r_frac=vices_extra)
+    elif vices_type_char == 'C':
+        result = build_type_c_annular(**kw, n_rings=int(vices_extra))
+    else:
+        result = build_type_d_twozone(**kw, divider_r_frac=vices_extra)
+
+    if not result.accepted:
+        return None, None, None, result.reason, None
+
+    # Physics guardrail check
+    from physics.calculator import reynolds, mach, euler, damkohler, k_rxn_from_sticking
+    n_h   = result.params.get('n_nozzles', 1)
+    D_m   = d_mm / 1000.0
+    Q_m3s = q_slm * 1e-3 / 60.0
+    V_noz = Q_m3s / (n_h * 3.14159 * (D_m / 2) ** 2)
+    Re_v  = reynolds(RHO_N2, V_noz, D_m, MU_N2)
+    Ma_v  = mach(V_noz, A_SOUND)
+
+    bounds = GuardrailBounds(Re=(1.0, re_max), Ma=(0.0, ma_max),
+                              Da=(da_min, da_max), Eu=(0.5, eu_max),
+                              Pr=(pr_min, pr_max), Sc=(sc_min, sc_max),
+                              Pe_h=(0.1, peh_max), Pe_m=(0.1, pem_max))
+
+    # Build k-NN graph from VICES point cloud
+    import numpy as np
+    from scipy.spatial import cKDTree
+    coords = result.point_cloud
+    nf     = result.node_features
+    gf     = result.global_features
+    N      = len(coords)
+    K      = cfg['k_neighbors']
+
+    node_mean = np.array(norm['node_mean'], dtype=np.float32)
+    node_std  = np.array(norm['node_std'],  dtype=np.float32)
+    out_mean  = np.array(norm['out_mean'],  dtype=np.float32)
+    out_std   = np.array(norm['out_std'],   dtype=np.float32)
+
+    xi   = np.concatenate([nf, np.tile(gf, (N, 1))], axis=1)
+    tree = cKDTree(coords)
+    _, idx = tree.query(coords, k=K + 1)
+    idx  = idx[:, 1:]
+    src  = np.repeat(np.arange(N), K)
+    dst  = idx.flatten()
+    diff = coords[dst] - coords[src]
+    dist = np.linalg.norm(diff, axis=1, keepdims=True)
+    med  = float(np.median(dist)) + 1e-8
+    ef   = np.concatenate([diff / med, dist / med], axis=1).astype(np.float32)
+
+    import torch
+    x  = torch.from_numpy((xi - node_mean) / (node_std + 1e-8)).float().to(DEVICE)
+    ei = torch.tensor(np.stack([src, dst]), dtype=torch.long).to(DEVICE)
+    ea = torch.from_numpy(ef).float().to(DEVICE)
+
+    with torch.no_grad():
+        fp, hp, sp = model(x, ei, ea)
+    fp = fp.cpu().numpy(); hp = hp.cpu().numpy().flatten()
+    sp = sp.cpu().numpy().flatten()
+    del x, ei, ea
+
+    preds = np.zeros((N, 6), dtype=np.float32)
+    preds[:, :4] = fp * out_std[:4] + out_mean[:4]
+    preds[:, 4]  = hp * out_std[4]  + out_mean[4]
+    preds[:, 5]  = sp * out_std[5]  + out_mean[5]
+
+    # Global dict (physics numbers) for guardrail
+    gd = {'Re': Re_v, 'Ma': Ma_v, 'n_holes': n_h,
+          'vices_type': vices_type_char, 'n_nozzles': n_h}
+    return coords, preds, gd, '', result
+
+
+@st.cache_data(show_spinner=False)
 def _cached_scatter_slice(coords_bytes, field_bytes, title):
     coords = np.frombuffer(coords_bytes, dtype=np.float32).reshape(-1, 3)
     field  = np.frombuffer(field_bytes,  dtype=np.float32)
@@ -566,26 +652,65 @@ with st.sidebar:
         for _k, _v in DEFAULTS.items():
             st.session_state[_k] = _v
 
+    # ── Track selector ────────────────────────────────────────────────────────
+    st.header('Design Track')
+    active_track = st.radio(
+        'Geometry synthesis method',
+        ['Track 1 — PCGM (Parametric)', 'Track 2 — VICES (CSG Topology)'],
+        key='active_track',
+        help='Track 1: parametric hex nozzle array. '
+             'Track 2: CSG boolean tree synthesis (baffled / conical / annular / two-zone).',
+    )
+    is_track2 = active_track.startswith('Track 2')
+
+    st.divider()
     st.header('Design Parameters')
+
+    # ── Track 2: geometry type + type-specific params ─────────────────────────
+    if is_track2:
+        vices_type = st.selectbox(
+            'Geometry type',
+            ['A — Baffled plenum', 'B — Conical diffuser',
+             'C — Annular rings',  'D — Two-zone plenum'],
+            key='vices_type',
+            help='A: baffle redistributes flow. B: cone deflects inlet jet radially. '
+                 'C: concentric ring nozzles. D: divider splits plenum into two zones.',
+        )
+        vices_type_char = vices_type[0]   # 'A','B','C','D'
+
+        with st.expander('Type-specific parameter', expanded=True):
+            if vices_type_char == 'A':
+                vices_extra = st.slider('Baffle position (fraction of plenum height)',
+                                        0.2, 0.8, 0.5, 0.05, key='vices_extra',
+                                        help='Where the baffle sits inside the plenum. '
+                                             '0.5 = midpoint.')
+            elif vices_type_char == 'B':
+                vices_extra = st.slider('Cone radius (fraction of plate radius)',
+                                        0.2, 0.6, 0.35, 0.05, key='vices_extra',
+                                        help='Radius of the conical diffuser relative to plate radius.')
+            elif vices_type_char == 'C':
+                vices_extra = st.slider('Number of nozzle rings', 2, 5, 3, 1,
+                                        key='vices_extra',
+                                        help='Concentric rings of nozzles.')
+            else:
+                vices_extra = st.slider('Divider radius (fraction of plate radius)',
+                                        0.3, 0.65, 0.45, 0.05, key='vices_extra',
+                                        help='Radius of the annular divider ring.')
+
+    # ── Common design params (both tracks) ────────────────────────────────────
     D_mm    = _slider_btns('Nozzle diameter D [mm]', 1.0,  3.0,   DEFAULTS['D_mm'],    0.1,
-                           'D_mm',    help='Diameter of each nozzle/hole in the showerhead faceplate. '
-                                          'Smaller D → higher jet velocity, more holes for same open area.')
+                           'D_mm',    help='Diameter of each nozzle/hole in the showerhead faceplate.')
     pitch_D = _slider_btns('Pitch / D',              3.0,  6.0,   DEFAULTS['pitch_D'], 0.25,
-                           'pitch_D', help='Centre-to-centre hole spacing divided by hole diameter. '
-                                          'Higher pitch/D → fewer holes, lower open area fraction.')
+                           'pitch_D', help='Centre-to-centre hole spacing divided by hole diameter.')
     Q_slm   = _slider_btns('Flow rate Q [slm]',      1.0,  10.0,  DEFAULTS['Q_slm'],   0.25,
-                           'Q_slm',   help='Total gas volumetric flow rate in Standard Litres per Minute (slm). '
-                                          '1 slm = 1.667×10⁻⁵ m³/s at standard conditions (0°C, 1 atm).')
+                           'Q_slm',   help='Total gas flow rate in Standard Litres per Minute.')
     with st.expander('Geometry (advanced)'):
         H_plenum_mm = _slider_btns('Plenum height H [mm]',       10.0, 40.0,  DEFAULTS['H_plenum_mm'], 1.0,
-                                   'H_plenum_mm', help='Height of the gas distribution plenum (the chamber above the faceplate). '
-                                                       'Taller plenum → more residence time, more uniform pressure distribution.')
+                                   'H_plenum_mm')
         t_face_mm   = _slider_btns('Faceplate thickness t [mm]',  1.0,  6.0,  DEFAULTS['t_face_mm'],   0.25,
-                                   't_face_mm',   help='Thickness of the showerhead faceplate. '
-                                                       'Thicker faceplate → higher aspect-ratio nozzle channels → more uniform jet velocity.')
+                                   't_face_mm')
         standoff_mm = _slider_btns('Standoff gap [mm]',            5.0, 40.0,  DEFAULTS['standoff_mm'], 1.0,
-                                   'standoff_mm', help='Gap between the faceplate bottom surface and the wafer top surface. '
-                                                       'Larger standoff → jets spread more before hitting wafer → better uniformity but lower concentration.')
+                                   'standoff_mm')
 
     st.divider()
     st.subheader('Physics Guardrail Bounds')
@@ -697,13 +822,23 @@ tab_pred, tab_opt, tab_gr, tab_geo, tab_t2 = st.tabs(
 # ── Tab 1: Predictions ─────────────────────────────────────────────────────
 with tab_pred:
     if run_btn:
-        with st.spinner('Generating PCGM point cloud + running surrogate...'):
-            coords, preds, gd, err, res = _cached_inference(
-                D_mm, pitch_D, Q_slm,
-                H_plenum_mm / 1000.0, t_face_mm / 1000.0, standoff_mm / 1000.0,
-                re_max, ma_max, eu_max, pr_min, pr_max, peh_max,
-                sc_min, sc_max, pem_max, da_min, da_max,
-            )
+        _track_label = 'VICES CSG' if is_track2 else 'PCGM'
+        with st.spinner(f'Generating {_track_label} geometry + running surrogate...'):
+            if is_track2:
+                coords, preds, gd, err, res = _cached_inference_vices(
+                    vices_type_char,
+                    D_mm, pitch_D, Q_slm,
+                    H_plenum_mm / 1000.0, t_face_mm / 1000.0, vices_extra,
+                    re_max, ma_max, eu_max, pr_min, pr_max, peh_max,
+                    sc_min, sc_max, pem_max, da_min, da_max,
+                )
+            else:
+                coords, preds, gd, err, res = _cached_inference(
+                    D_mm, pitch_D, Q_slm,
+                    H_plenum_mm / 1000.0, t_face_mm / 1000.0, standoff_mm / 1000.0,
+                    re_max, ma_max, eu_max, pr_min, pr_max, peh_max,
+                    sc_min, sc_max, pem_max, da_min, da_max,
+                )
 
         if coords is None:
             st.error(f'Guardrail engine rejected this design: {err}')
@@ -714,9 +849,9 @@ with tab_pred:
                 Eu=(0.5, eu_max), Pr=(pr_min, pr_max), Sc=(sc_min, sc_max),
                 Pe_h=(0.1, peh_max), Pe_m=(0.1, pem_max),
             )
-            Q_m3s_run = float(gd['flow_rate_slm']) * 1.667e-5
-            D_m_run   = float(gd['D'])
-            n_h_run   = max(int(round(float(gd['n_holes']))), 1)
+            D_m_run   = D_mm / 1000.0
+            n_h_run   = max(int(gd.get('n_holes', gd.get('n_nozzles', 1))), 1)
+            Q_m3s_run = Q_slm * 1.667e-5
             V_noz_run = Q_m3s_run / (n_h_run * 3.14159 * (D_m_run / 2) ** 2)
             dp_run    = float(abs(preds[:, 3].max() - preds[:, 3].min()))
             st.session_state['pred_results'] = {
@@ -726,7 +861,10 @@ with tab_pred:
                 'dp_Pa': dp_run,
                 'n_h': n_h_run,
                 'D_mm': D_mm, 'pitch_D': pitch_D, 'Q_slm': Q_slm,
-                'H_plenum_mm': H_plenum_mm, 't_face_mm': t_face_mm, 'standoff_mm': standoff_mm,
+                'H_plenum_mm': H_plenum_mm, 't_face_mm': t_face_mm,
+                'standoff_mm': standoff_mm if not is_track2 else 20.0,
+                'track': 2 if is_track2 else 1,
+                'vices_type': vices_type_char if is_track2 else None,
                 'fig_3d': {},
             }
 
@@ -743,6 +881,17 @@ with tab_pred:
         H_plenum_mm_r = _r['H_plenum_mm']
         t_face_mm_r   = _r['t_face_mm']
         standoff_mm_r = _r['standoff_mm']
+        _result_track = _r.get('track', 1)
+        _vices_type   = _r.get('vices_type', None)
+
+        # ── Track badge ───────────────────────────────────────────────────────
+        _type_labels = {'A': 'Baffled plenum', 'B': 'Conical diffuser',
+                        'C': 'Annular rings',  'D': 'Two-zone plenum'}
+        if _result_track == 2 and _vices_type:
+            st.info(f'🌀 **Track 2 — VICES** · Type {_vices_type}: '
+                    f'{_type_labels.get(_vices_type,"")} · '
+                    f'n_nozzles = {n_h} · '
+                    f'CSG: {gd.get("vices_type","?")} geometry')
 
         # ── Key metrics ───────────────────────────────────────────────────────
         def _ui(field, z, z_lo_frac, z_hi_frac):
