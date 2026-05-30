@@ -78,15 +78,53 @@ def _latest_time(case_dir: Path) -> str:
     return f"{max(times):g}"
 
 
-def read_case_fields(case_dir: Path) -> Optional[dict]:
+def _peak_tma_time(case_dir: Path) -> str:
+    """
+    Return the time directory where TMA field has maximum mean value.
+    Used for Track 2 cases where latest time is in purge phase (TMA ≈ 0).
+    Falls back to latest time if TMA is uniform/zero at all times.
+    """
+    ff = _import_fluidfoam()
+    times = []
+    for d in case_dir.iterdir():
+        if d.is_dir():
+            try:
+                t = float(d.name)
+                if t > 0:
+                    times.append(t)
+            except ValueError:
+                pass
+    if not times:
+        raise FileNotFoundError(f"No completed time directories in {case_dir}")
+
+    best_t, best_mean = max(times), 0.0
+    for t in sorted(times):
+        try:
+            import numpy as _np
+            tma = _np.asarray(ff.readscalar(str(case_dir), f"{t:g}", "TMA"),
+                              dtype=_np.float32)
+            if tma.ndim == 0 or len(tma) == 1:
+                continue   # uniform field (constant 0)
+            m = float(tma.mean())
+            if m > best_mean:
+                best_mean = m
+                best_t = t
+        except Exception:
+            pass
+    return f"{best_t:g}"
+
+
+def read_case_fields(case_dir: Path, peak_tma: bool = False) -> Optional[dict]:
     """
     Read U, p, T, TMA and mesh cell centres from an OpenFOAM case.
     Returns dict or None if the case has not completed.
+    peak_tma: if True, read time step with maximum mean TMA (for Track 2
+              cases where latest time is in purge phase).
     """
     ff = _import_fluidfoam()
 
     try:
-        t = _latest_time(case_dir)
+        t = _peak_tma_time(case_dir) if peak_tma else _latest_time(case_dir)
     except FileNotFoundError:
         return None
 
@@ -386,7 +424,8 @@ def write_hdf5(fields: dict, case_meta: dict, out_path: Path,
 # Per-case processor
 # ══════════════════════════════════════════════════════════════════════════
 
-def process_case(case_dir: Path, out_dir: Path, overwrite: bool = False) -> dict:
+def process_case(case_dir: Path, out_dir: Path, overwrite: bool = False,
+                 peak_tma: bool = False) -> dict:
     name     = case_dir.name
     out_path = out_dir / f"{name}.h5"
 
@@ -405,7 +444,7 @@ def process_case(case_dir: Path, out_dir: Path, overwrite: bool = False) -> dict
 
     # Read OpenFOAM fields
     print(f"  [READ] {name} ...")
-    fields = read_case_fields(case_dir)
+    fields = read_case_fields(case_dir, peak_tma=peak_tma)
     if fields is None or "x" not in fields:
         print(f"  [FAIL] {name}: could not read fields")
         return {"name": name, "status": "no_fields", "out": ""}
@@ -453,6 +492,8 @@ def parse_args():
                    help="Output directory for HDF5 files")
     p.add_argument("--overwrite", action="store_true",
                    help="Re-process and overwrite existing HDF5 files")
+    p.add_argument("--peak_tma", action="store_true",
+                   help="Use time step with maximum TMA (for Track 2 purge-phase cases)")
     return p.parse_args()
 
 
@@ -500,7 +541,8 @@ def main():
 
     results = []
     for case_dir in case_dirs:
-        result = process_case(case_dir, out_dir, overwrite=args.overwrite)
+        result = process_case(case_dir, out_dir, overwrite=args.overwrite,
+                              peak_tma=args.peak_tma)
         results.append(result)
 
     # Summary
