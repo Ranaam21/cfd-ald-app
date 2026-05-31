@@ -1116,22 +1116,62 @@ with tab_pred:
                 )
 
         # ── Tier 2: Post-prediction Validators ────────────────────────────────
-        with st.expander('Tier 2 Physical Consistency Validators (Pr · Pe_h · Nu · Bi · Sh)'):
-            if not tier2_viols:
-                st.success('All post-prediction validators within bounds.')
-            else:
-                st.warning(f'{len(tier2_viols)} validator(s) flagged — '
-                           'consider CFD refinement for this design.')
-                for v in tier2_viols:
-                    st.warning(
-                        f'**{v.symbol}** = {v.value:.4g}  '
-                        f'(allowed [{v.lo:.4g}, {v.hi:.4g}])  {v.message}'
-                    )
+        # Suggestions: what to change when a validator fails
+        _T2_SUGGESTIONS = {
+            'Pr':   ('Pr ≈ 0.71 for N₂ is essentially fixed. '
+                     'If Pr is out of range, check that you are using N₂ as carrier gas '
+                     'and that fluid properties (cp, μ, k) are correctly specified.'),
+            'Pe_h': ('Pe_h = Re × Pr. Since Pr is fixed for N₂, reducing Pe_h means '
+                     'reducing Re — try **decreasing Q (flow rate)** or '
+                     '**increasing D (nozzle diameter)** to lower jet velocity.'),
+            'Nu':   ('Nusselt number is low — convective heat transfer is weak. '
+                     'Try **increasing Q (flow rate)** to raise jet velocity, or '
+                     '**decreasing standoff gap** to bring jets closer to the wafer.'),
+            'Bi':   ('Biot number is high — significant temperature gradient inside the faceplate. '
+                     'Try **reducing faceplate thickness t** to minimise internal conduction path, '
+                     'or use a higher-conductivity faceplate material.'),
+            'Sh':   ('Sherwood number is out of range — TMA mass transfer to the wafer is '
+                     'either too weak or too strong. '
+                     'If Sh is too low: **increase Q** or **decrease pitch/D** (more nozzles). '
+                     'If Sh is too high: **decrease Q** or **increase standoff gap** '
+                     'to allow more diffusive spreading before the wafer.'),
+        }
+
+        with st.expander(
+            f'Tier 2 — Physical Consistency Validators  '
+            f'{"✓ All OK" if not tier2_viols else f"⚠ {len(tier2_viols)} flagged"}',
+            expanded=bool(tier2_viols)
+        ):
             st.caption(
-                'Nu (Nusselt) and Bi (Biot) are derived from CFD fields and shown '
-                'in the metrics row above when available. Sh (Sherwood) requires '
-                'reactive transport CFD results.'
+                'Checked after prediction. Violation does not block inference but '
+                'suggests the design may need CFD refinement or parameter adjustment.'
             )
+
+            # Status badge row
+            t2_all = ['Pr', 'Pe_h', 'Nu', 'Bi', 'Sh']
+            t2_failed = {v.symbol for v in tier2_viols}
+            badge_cols = st.columns(len(t2_all))
+            for col, sym in zip(badge_cols, t2_all):
+                if sym in t2_failed:
+                    col.error(f'⚠ {sym}')
+                else:
+                    col.success(f'✓ {sym}')
+
+            # Suggestions for any failures
+            if tier2_viols:
+                st.divider()
+                for v in tier2_viols:
+                    with st.container():
+                        st.markdown(
+                            f'**{v.symbol}** = `{v.value:.4g}`  '
+                            f'(allowed range: [{v.lo:.4g}, {v.hi:.4g}])'
+                        )
+                        suggestion = _T2_SUGGESTIONS.get(v.symbol, '')
+                        if suggestion:
+                            st.info(f'💡 **Suggestion:** {suggestion}')
+            else:
+                st.success('All five post-prediction validators are within bounds. '
+                           'Physical consistency confirmed.')
 
         for flag in gr_result.special_flags:
             st.info(f'Flag: {flag}')
