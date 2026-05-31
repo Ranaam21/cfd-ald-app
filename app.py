@@ -816,18 +816,42 @@ with st.sidebar:
                                'peh_max', help='[POST-PREDICTION VALIDATOR] Pe_h = Re·Pr. '
                                               'Derived from Re and Pr — not independent. '
                                               'High Pe_h: convection dominates thermal transport.')
-        st.info(
-            '**Nu, Bi, Sh** have no user-settable bounds here — '
-            'they are computed automatically from correlation formulas '
-            'after every Run Prediction and shown with values + ranges '
-            'in the **Predictions tab → Tier 2 validators** section below.'
-        )
+        st.caption('Nu · Bi · Sh — no sliders, computed after prediction.')
 
     st.divider()
     run_btn = st.button('Run Prediction', type='primary', use_container_width=True)
     if st.button('Reset to defaults', use_container_width=True):
         st.session_state['_reset_requested'] = True
         st.rerun()
+
+    # ── Tier 2 results in sidebar (visible after Run Prediction) ──────────────
+    if 'pred_results' in st.session_state:
+        _t2 = st.session_state['pred_results'].get('t2_vals', {})
+        _pb = st.session_state['pred_results'].get('pred_bounds')
+        if _t2:
+            st.divider()
+            st.markdown('**Tier 2 — Post-Prediction Validators**')
+            _T2_RANGES_SB = {
+                'Pr':   (_pb.Pr[0],  _pb.Pr[1])   if _pb else (0.5, 100.0),
+                'Pe_h': (0.1,        _pb.Pe_h[1])  if _pb else (0.1, 100000.0),
+                'Nu':   (1.0,   100.0),
+                'Bi':   (0.001,   0.1),
+                'Sh':   (0.5,    50.0),
+            }
+            _T2_FMT_SB = {
+                'Pr':'cpμ/k', 'Pe_h':'Re·Pr',
+                'Nu':'hL/k',  'Bi':'hL/k_s', 'Sh':'k_mL/Dm',
+            }
+            for sym in ['Pr', 'Pe_h', 'Nu', 'Bi', 'Sh']:
+                val    = _t2.get(sym)
+                lo, hi = _T2_RANGES_SB[sym]
+                ok     = (val is not None) and (lo <= val <= hi)
+                icon   = '✅' if ok else '⚠️'
+                val_s  = f'{val:.3g}' if val is not None else 'n/a'
+                st.markdown(
+                    f'{icon} **{sym}** = {_T2_FMT_SB[sym]}  '
+                    f'`{val_s}` ← range `[{lo:.3g}, {hi:.3g}]`'
+                )
 
     st.divider()
     with st.expander('Physics Reference'):
@@ -912,6 +936,19 @@ with tab_pred:
             Q_m3s_run = Q_slm * 1.667e-5
             V_noz_run = Q_m3s_run / (n_h_run * 3.14159 * (D_m_run / 2) ** 2)
             dp_run    = float(abs(preds[:, 3].max() - preds[:, 3].min()))
+            # Compute Tier 2 validators at prediction time for sidebar display
+            _k_n2  = 0.031; _mu_n2 = 2.0e-5; _cp_n2 = 1040.0
+            _pr_n2 = _cp_n2 * _mu_n2 / _k_n2
+            _d_tma = 2.5e-5; _sc   = _mu_n2 / (RHO_N2 * _d_tma)
+            _k_s   = 16.0
+            _re_run = float(dict(res.dim_nums).get('Re', 1.0))
+            _nu_run = max(0.01, 0.5 * (_re_run ** 0.5) * (_pr_n2 ** 0.42))
+            _h_run  = _nu_run * _k_n2 / (D_mm / 1000.0)
+            _bi_run = _h_run  * (t_face_mm / 1000.0) / _k_s
+            _sh_run = _nu_run * (_sc / _pr_n2) ** (1.0 / 3.0)
+            _pr_run = float(dict(res.dim_nums).get('Pr', _pr_n2))
+            _peh_run= float(dict(res.dim_nums).get('Pe_h', _re_run * _pr_n2))
+
             st.session_state['pred_results'] = {
                 'coords': coords, 'preds': preds, 'gd': gd, 'res': res,
                 'pred_bounds': pred_bounds,
@@ -924,6 +961,10 @@ with tab_pred:
                 'track': 2 if is_track2 else 1,
                 'vices_type': vices_type_char if is_track2 else None,
                 'fig_3d': {},
+                't2_vals': {
+                    'Pr':   _pr_run,  'Pe_h': _peh_run,
+                    'Nu':   _nu_run,  'Bi':   _bi_run,  'Sh': _sh_run,
+                },
             }
 
     if 'pred_results' not in st.session_state:
