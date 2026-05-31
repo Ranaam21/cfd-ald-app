@@ -820,9 +820,9 @@ with st.sidebar:
         st.markdown('**Nu · Bi · Sh** — computed from correlations after prediction:')
         _t2_sb  = st.session_state.get('pred_results', {}).get('t2_vals', {})
         _T2_SB = [
-            ('Nu', 'hL/k',      1.0,   100.0,  'Martin (1977) jet-impingement'),
-            ('Bi', 'hL/k_s',    0.001,   0.1,  'Want Bi << 1 (thin faceplate)'),
-            ('Sh', 'k_mL/D_m',  0.5,    50.0,  'Chilton-Colburn analogy'),
+            ('Nu', 'hL/k',      0.1,   100.0,  'Martin (1977) — ALD creeping flow gives Nu < 1 (conduction-dominated, normal)'),
+            ('Bi', 'hL/k_s',    0.001,   0.1,  'Want Bi << 1 (faceplate thermally thin)'),
+            ('Sh', 'k_mL/D_m',  0.1,    50.0,  'Chilton-Colburn — low Re gives Sh < 1, diffusion-dominated (normal for ALD)'),
         ]
         for sym, formula, lo, hi, note in _T2_SB:
             val = _t2_sb.get(sym)
@@ -1211,9 +1211,9 @@ with tab_pred:
         _T2_REF_RANGES = {
             'Pr':   (float(pred_bounds.Pr[0]),  float(pred_bounds.Pr[1])),
             'Pe_h': (0.1,                        float(pred_bounds.Pe_h[1])),
-            'Nu':   (1.0,   100.0),   # jet impingement ALD range [12]
+            'Nu':   (0.1,   100.0),   # ALD creeping flow: Nu < 1 is normal (conduction-dominated)
             'Bi':   (0.001,   0.1),   # faceplate thermally thin (Bi << 1)
-            'Sh':   (0.5,    50.0),   # Mendeley Sh-Re-Sc dataset range [13]
+            'Sh':   (0.1,    50.0),   # ALD low-Re: Sh < 1 normal (diffusion-dominated)
         }
         _T2_FORMULAS = {
             'Pr':   'cpμ/k',
