@@ -1204,7 +1204,7 @@ doc2 = new_doc()
 _ACRONYMS_BOLDED.clear()
 
 for line in ['Amit Rana', 'Independent Researcher', 'amit21aim@gmail.com',
-             'ORCID: https://orcid.org/0009-0008-5998-6560', 'May 2026']:
+             'ORCID: https://orcid.org/0009-0008-5998-6560', 'Jun 2026']:
     pp = doc2.add_paragraph(); pp.paragraph_format.space_after = Pt(2)
     r = pp.add_run(line); sf(r, size=11)
 doc2.add_paragraph().paragraph_format.space_after = Pt(10)
@@ -1220,23 +1220,45 @@ p(doc2,
     'Topology-Aware Search" for publication in Chemical Engineering Journal.'
 )
 p(doc2,
-    'This work addresses a fundamental challenge in ALD reactor engineering: '
-    'designing showerhead gas distributors that achieve uniform precursor delivery. '
-    'Our framework reduces design evaluation from hours to seconds and enables '
-    'topology-level geometry search — discovering designs that parametric methods '
-    'cannot represent, achieving a +130% TMA uniformity improvement.'
+    'This work addresses a fundamental challenge in ALD (Atomic Layer Deposition) '
+    'reactor engineering: designing showerhead gas distributors that deliver precursor '
+    'gas uniformly across the wafer surface. The key insight is that the bottleneck '
+    'in showerhead design is not analysis speed — it is access to geometries that '
+    'parametric design tools structurally cannot represent. '
+    'Our framework directly addresses this topology gap through two complementary tracks: '
+    'Track 1 (PCGM — Physics-Constrained Geometric Morphogenesis) for parametric search, '
+    'and Track 2 (VICES — Voxel-Implicit Computational Engineering Synthesis) for '
+    'topology-level geometry synthesis using Constructive Solid Geometry (CSG). '
+    'The best-performing design — an annular-ring nozzle pattern — cannot be '
+    'constructed within any parametric design space at any parameter setting. '
+    'The geometry itself is the contribution; the surrogate evaluates it quickly.'
+)
+p(doc2,
+    'This work is explicitly not a Physics-Informed Neural Network (PINN) or '
+    'neural PDE solver contribution. Where PINN work asks "can we predict a fixed '
+    'geometry\'s flow more accurately?", we ask "can we synthesise geometries that '
+    'no parametric tool can reach?" — a fundamentally different and, for ALD '
+    'showerhead design, more impactful question.'
 )
 p(doc2, 'Key contributions relevant to Chemical Engineering Journal scope:')
-bp(doc2, 'Novel dual-track framework',
-    'first direct comparison of parametric and voxel-implicit CSG geometry '
-    'synthesis for ALD reactor design.')
-bp(doc2, 'Physics guardrail engine',
-    'eleven dimensionless constraints (Re, Ma, Eu, Pr, Nu, Bi, Sc, Sh, Pe_h, '
-    'Pe_m, Da) enforcing physical validity.')
-bp(doc2, 'Topology discovery',
-    'Track 2 achieves TMA-UI = 0.792 vs Track 1 maximum of 0.344 (+130%).')
-bp(doc2, 'Open reproducibility',
-    'all 123 OpenFOAM simulations and code at https://github.com/Ranaam21/cfd-ald-app.')
+bp(doc2, 'Geometric topology search as primary novelty',
+    'Track 2 VICES synthesises four structurally distinct showerhead topology families '
+    '(baffled, conical, annular, two-zone) using CSG boolean operations on Signed '
+    'Distance Fields. The topology design space is formally characterised using '
+    'Catalan numbers: C(n-1) distinct tree topologies for n primitives.')
+bp(doc2, 'Genetic Algorithm-guided topology optimisation',
+    'a GA searches jointly over topology type and continuous dimensions, '
+    'achieving TMA Uniformity Index = 0.971 vs Track 1 maximum of 0.344 — '
+    'a +183% improvement. Random search achieves 0.895; the GA finds a further '
+    '+8.5% by discovering an optimally-positioned baffled plenum topology.')
+bp(doc2, 'Two-tier physics guardrail engine',
+    'Tier 1 (Re, Ma, Eu, Da, Sc, Pe_m) enforces design constraints before inference; '
+    'Tier 2 (Pr, Pe_h, Nu, Bi, Sh) validates physical consistency after prediction '
+    'using Martin (1977) and Chilton-Colburn correlations. '
+    'Tier 2 values update live as design parameters change.')
+bp(doc2, 'Open and reproducible',
+    'all 123 OpenFOAM reactingFoam cases, training notebooks, and the interactive '
+    'Streamlit dashboard are available at https://github.com/Ranaam21/cfd-ald-app.')
 p(doc2,
     'A preprint is available on Zenodo. This manuscript has not been published '
     'elsewhere and is not under consideration at any other journal.'
