@@ -1137,6 +1137,38 @@ with tab_pred:
                      'to allow more diffusive spreading before the wafer.'),
         }
 
+        # Reference ranges for Nu, Bi, Sh (no user sliders — literature anchors)
+        _T2_REF_RANGES = {
+            'Pr':   (float(pred_bounds.Pr[0]),  float(pred_bounds.Pr[1])),
+            'Pe_h': (0.1,                        float(pred_bounds.Pe_h[1])),
+            'Nu':   (1.0,   100.0),   # jet impingement ALD range [12]
+            'Bi':   (0.001,   0.1),   # faceplate thermally thin (Bi << 1)
+            'Sh':   (0.5,    50.0),   # Mendeley Sh-Re-Sc dataset range [13]
+        }
+        _T2_FORMULAS = {
+            'Pr':   'cpμ/k',
+            'Pe_h': 'Re·Pr',
+            'Nu':   'hL/k',
+            'Bi':   'hL/k_s',
+            'Sh':   'k_m L/D_m',
+        }
+        _T2_MEANINGS = {
+            'Pr':   'Momentum / thermal diffusivity ratio. ≈ 0.71 for N₂ — essentially fixed.',
+            'Pe_h': 'Heat advection vs diffusion. Derived from Re×Pr — not independent.',
+            'Nu':   'Convective / conductive heat transfer. Computed from predicted T field.',
+            'Bi':   'Surface convection / faceplate internal conduction. Want Bi << 1.',
+            'Sh':   'Convective / diffusive TMA transfer. Computed from predicted species field.',
+        }
+        # Build current values from dim_vals (Nu, Bi, Sh may be absent — require CFD fields)
+        t2_vals = {
+            'Pr':   dim_vals.get('Pr'),
+            'Pe_h': dim_vals.get('Pe_h'),
+            'Nu':   dim_vals.get('Nu'),
+            'Bi':   dim_vals.get('Bi'),
+            'Sh':   dim_vals.get('Sh'),
+        }
+        t2_failed = {v.symbol for v in tier2_viols}
+
         with st.expander(
             f'Tier 2 — Physical Consistency Validators  '
             f'{"✓ All OK" if not tier2_viols else f"⚠ {len(tier2_viols)} flagged"}',
@@ -1144,32 +1176,34 @@ with tab_pred:
         ):
             st.caption(
                 'Checked after prediction. Violation does not block inference but '
-                'suggests the design may need CFD refinement or parameter adjustment.'
+                'suggests the design may need parameter adjustment or CFD refinement.'
             )
 
-            # Status badge row
-            t2_all = ['Pr', 'Pe_h', 'Nu', 'Bi', 'Sh']
-            t2_failed = {v.symbol for v in tier2_viols}
-            badge_cols = st.columns(len(t2_all))
-            for col, sym in zip(badge_cols, t2_all):
-                if sym in t2_failed:
-                    col.error(f'⚠ {sym}')
-                else:
-                    col.success(f'✓ {sym}')
+            # ── Full table: all 5 validators with value + range + status ──────
+            for sym in ['Pr', 'Pe_h', 'Nu', 'Bi', 'Sh']:
+                lo, hi   = _T2_REF_RANGES[sym]
+                val      = t2_vals[sym]
+                failed   = sym in t2_failed
+                icon     = '⚠️' if failed else '✅'
+                val_str  = f'{val:.4g}' if val is not None else 'n/a (requires CFD fields)'
 
-            # Suggestions for any failures
-            if tier2_viols:
-                st.divider()
-                for v in tier2_viols:
-                    with st.container():
-                        st.markdown(
-                            f'**{v.symbol}** = `{v.value:.4g}`  '
-                            f'(allowed range: [{v.lo:.4g}, {v.hi:.4g}])'
-                        )
-                        suggestion = _T2_SUGGESTIONS.get(v.symbol, '')
-                        if suggestion:
-                            st.info(f'💡 **Suggestion:** {suggestion}')
-            else:
+                with st.container():
+                    c1, c2, c3, c4 = st.columns([1, 2, 3, 4])
+                    c1.markdown(f'**{icon}**')
+                    c2.markdown(f'**{sym}** = {_T2_FORMULAS[sym]}')
+                    c3.markdown(
+                        f'Value: `{val_str}`  \n'
+                        f'Range: `[{lo:.4g}, {hi:.4g}]`'
+                    )
+                    c4.caption(_T2_MEANINGS[sym])
+
+                # Suggestion shown directly below any failure
+                if failed:
+                    suggestion = _T2_SUGGESTIONS.get(sym, '')
+                    if suggestion:
+                        st.info(f'💡 **Suggestion for {sym}:** {suggestion}')
+
+            if not tier2_viols:
                 st.success('All five post-prediction validators are within bounds. '
                            'Physical consistency confirmed.')
 
