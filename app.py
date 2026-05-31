@@ -820,22 +820,34 @@ with st.sidebar:
         st.markdown('**Nu · Bi · Sh** — computed from correlations after prediction:')
         _t2_sb  = st.session_state.get('pred_results', {}).get('t2_vals', {})
         _T2_SB = [
-            ('Nu', 'hL/k',      0.1,   100.0,  'Martin (1977) — ALD creeping flow gives Nu < 1 (conduction-dominated, normal)'),
-            ('Bi', 'hL/k_s',    0.001,   0.1,  'Want Bi << 1 (faceplate thermally thin)'),
-            ('Sh', 'k_mL/D_m',  0.1,    50.0,  'Chilton-Colburn — low Re gives Sh < 1, diffusion-dominated (normal for ALD)'),
+            ('Nu', 'hL/k',     0.1,  100.0,
+             'Martin (1977). ALD creeping flow: Nu < 1 is normal (conduction-dominated).',
+             'Nu is very high — convective heat transfer unusually strong. '
+             'Try **reducing Q** (lower jet velocity) or **increasing standoff gap** '
+             'to let jets spread before hitting the wafer.'),
+            ('Bi', 'hL/k_s',   0.001,  0.1,
+             'Want Bi << 1 — faceplate should be thermally thin.',
+             'Bi is too high — large temperature gradient inside the faceplate. '
+             'Try **reducing faceplate thickness t** or use a higher-conductivity material.'),
+            ('Sh', 'k_mL/D_m', 0.1,   50.0,
+             'Chilton-Colburn. Low Re gives Sh < 1 — diffusion-dominated, normal for ALD.',
+             'Sh is very high — TMA mass transfer is convection-dominated. '
+             'Try **reducing Q** or **increasing standoff gap** for more diffusive spreading.'),
         ]
-        for sym, formula, lo, hi, note in _T2_SB:
+        for sym, formula, lo, hi, note, suggestion in _T2_SB:
             val = _t2_sb.get(sym)
             if val is None:
-                st.caption(f'**{sym}** = {formula}  `—`  range `[{lo}, {hi}]`  ← {note}')
+                st.caption(f'**{sym}** = {formula}  `—`  range [{lo}, {hi}]')
             else:
                 ok   = lo <= val <= hi
                 icon = '✅' if ok else '⚠️'
                 st.markdown(
                     f'{icon} **{sym}** = {formula}  '
-                    f'`{val:.3g}` ← range `[{lo}, {hi}]`  '
-                    f'*{note}*'
+                    f'`{val:.3g}` ← range `[{lo}, {hi}]`'
                 )
+                st.caption(f'*{note}*')
+                if not ok:
+                    st.info(f'💡 {suggestion}')
         if not _t2_sb:
             st.caption('↑ Click **Run Prediction** to compute values.')
 
