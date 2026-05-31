@@ -612,6 +612,10 @@ st.set_page_config(page_title='ALD Showerhead CFD', layout='wide', page_icon='�
 
 st.markdown("""
 <style>
+/* ── Sidebar width ───────────────────────────────────────────────────────── */
+[data-testid="stSidebar"] > div:first-child { width: 380px; }
+section[data-testid="stSidebar"] { width: 380px !important; min-width: 380px !important; }
+
 /* ── Replace ? tooltip icon with bold italic i ───────────────────────────── */
 [data-testid="stTooltipIcon"] {
     position: relative !important;
