@@ -820,40 +820,50 @@ with st.sidebar:
                                'peh_max', help='[POST-PREDICTION VALIDATOR] Pe_h = Re·Pr. '
                                               'Derived from Re and Pr — not independent. '
                                               'High Pe_h: convection dominates thermal transport.')
-        # ── Nu / Bi / Sh — show computed values (or placeholder) ────────────────
-        st.markdown('**Nu · Bi · Sh** — computed from correlations after prediction:')
-        _t2_sb  = st.session_state.get('pred_results', {}).get('t2_vals', {})
+        # ── Nu / Bi / Sh — computed LIVE from slider values (no prediction needed) ─
+        # Compute inline so values are always visible, updating as sliders change
+        _k_n2_sb = 0.031; _mu_n2_sb = 2.0e-5; _cp_n2_sb = 1040.0
+        _pr_n2_sb = _cp_n2_sb * _mu_n2_sb / _k_n2_sb
+        _d_tma_sb = 2.5e-5
+        _sc_sb    = _mu_n2_sb / (RHO_N2 * _d_tma_sb)
+        _k_s_sb   = 16.0
+        # estimate n_holes from pitch and plate diameter
+        import math as _math
+        _n_holes_sb = max(1, int(_math.pi * (0.075 / (D_mm/1000 * pitch_D))**2))
+        _Q_m3s_sb   = Q_slm * 1.667e-5
+        _V_sb       = _Q_m3s_sb / (_n_holes_sb * _math.pi * (D_mm/2000)**2)
+        _Re_sb      = RHO_N2 * _V_sb * (D_mm/1000) / _mu_n2_sb
+        _Nu_sb      = max(0.01, 0.5 * (_Re_sb**0.5) * (_pr_n2_sb**0.42))
+        _h_sb       = _Nu_sb * _k_n2_sb / (D_mm/1000)
+        _Bi_sb      = _h_sb  * (t_face_mm/1000) / _k_s_sb
+        _Sh_sb      = _Nu_sb * (_sc_sb / _pr_n2_sb)**(1/3)
+
+        st.markdown('**Nu · Bi · Sh** — from correlations (updates with sliders):')
         _T2_SB = [
-            ('Nu', 'hL/k',     0.1,  100.0,
+            ('Nu', 'hL/k',     _Nu_sb, 0.1,  100.0,
              'Martin (1977). ALD creeping flow: Nu < 1 is normal (conduction-dominated).',
              'Nu is very high — convective heat transfer unusually strong. '
              'Try **reducing Q** (lower jet velocity) or **increasing standoff gap** '
              'to let jets spread before hitting the wafer.'),
-            ('Bi', 'hL/k_s',   0.001,  0.1,
+            ('Bi', 'hL/k_s',   _Bi_sb, 0.001,  0.1,
              'Want Bi << 1 — faceplate should be thermally thin.',
              'Bi is too high — large temperature gradient inside the faceplate. '
              'Try **reducing faceplate thickness t** or use a higher-conductivity material.'),
-            ('Sh', 'k_mL/D_m', 0.1,   50.0,
+            ('Sh', 'k_mL/D_m', _Sh_sb, 0.1,   50.0,
              'Chilton-Colburn. Low Re gives Sh < 1 — diffusion-dominated, normal for ALD.',
              'Sh is very high — TMA mass transfer is convection-dominated. '
              'Try **reducing Q** or **increasing standoff gap** for more diffusive spreading.'),
         ]
-        for sym, formula, lo, hi, note, suggestion in _T2_SB:
-            val = _t2_sb.get(sym)
-            if val is None:
-                st.caption(f'**{sym}** = {formula}  `—`  range [{lo}, {hi}]')
-            else:
-                ok   = lo <= val <= hi
-                icon = '✅' if ok else '⚠️'
-                st.markdown(
-                    f'{icon} **{sym}** = {formula}  '
-                    f'`{val:.3g}` ← range `[{lo}, {hi}]`'
-                )
-                st.caption(f'*{note}*')
-                if not ok:
-                    st.info(f'💡 {suggestion}')
-        if not _t2_sb:
-            st.caption('↑ Click **Run Prediction** to compute values.')
+        for sym, formula, val, lo, hi, note, suggestion in _T2_SB:
+            ok   = lo <= val <= hi
+            icon = '✅' if ok else '⚠️'
+            st.markdown(
+                f'{icon} **{sym}** = {formula}  '
+                f'`{val:.3g}` ← range `[{lo}, {hi}]`'
+            )
+            st.caption(f'*{note}*')
+            if not ok:
+                st.info(f'💡 {suggestion}')
 
     st.divider()
     run_btn = st.button('Run Prediction', type='primary', use_container_width=True)
