@@ -622,17 +622,28 @@ bp(doc, 'Peclet Number (heat) Pe_h = Re*Pr  [Tier 2]',
     'Validates that the advection-diffusion balance for heat is consistent '
     'with the training distribution.')
 bp(doc, 'Nusselt Number Nu = h*L / k  [Tier 2]',
-    'ratio of convective to conductive heat transfer. Computed from the '
-    'predicted temperature field after inference. '
-    'Bounds anchored to jet-impingement correlations [12].')
+    'ratio of convective to conductive heat transfer. '
+    'Computed from the Martin (1977) jet-impingement correlation: '
+    'Nu = 0.5 * Re^0.5 * Pr^0.42. '
+    'Important note: at ALD\'s creeping-flow regime (Re ~ 1-10), '
+    'Nu ~ 0.5-0.8 is physically correct and expected — '
+    'it indicates conduction-dominated heat transfer, '
+    'which is desirable for ALD (uniform faceplate temperature). '
+    'Nu < 1 does NOT indicate a problem; it is the normal ALD operating regime. '
+    'Allowable range: [0.1, 100].')
 bp(doc, 'Biot Number Bi = h*L / k_s  [Tier 2]',
     'ratio of surface convection to faceplate internal conduction. '
-    'k_s [W/(m.K)] = solid thermal conductivity. Bi << 1 validates the '
-    'uniform wall temperature boundary condition assumed during CFD and inference.')
+    'k_s = 16 W/(m.K) for stainless steel 316 faceplate (default). '
+    'h is derived from the computed Nu. '
+    'Bi << 1 validates the uniform wall temperature boundary condition. '
+    'Allowable range: [0.001, 0.1].')
 bp(doc, 'Sherwood Number Sh = k_m*L / D_m  [Tier 2]',
-    'mass-transfer analogue of Nusselt. k_m [m/s] = mass transfer coefficient. '
-    'Computed from species field after inference. '
-    'Bounds anchored to the Mendeley Sh–Re–Sc dataset [13].')
+    'mass-transfer analogue of Nusselt, computed via the Chilton-Colburn analogy: '
+    'Sh = Nu * (Sc/Pr)^(1/3). '
+    'Similarly, Sh < 1 at low Re indicates diffusion-dominated precursor transport — '
+    'physically correct and favourable for ALD uniformity since diffusion '
+    'spreads the precursor uniformly regardless of jet placement. '
+    'Allowable range: [0.1, 50].')
 
 # ── 5. Track 1 PCGM ──────────────────────────────────────────────────────────
 h(doc, '5. Track 1 — Physics-Constrained Geometric Morphogenesis (PCGM)')
