@@ -816,8 +816,12 @@ with st.sidebar:
                                'peh_max', help='[POST-PREDICTION VALIDATOR] Pe_h = Re·Pr. '
                                               'Derived from Re and Pr — not independent. '
                                               'High Pe_h: convection dominates thermal transport.')
-        st.caption('Nu (Nusselt hL/k) and Bi (Biot hL/k_s) are computed from CFD fields — '
-                   'shown in results after Run Prediction.')
+        st.info(
+            '**Nu, Bi, Sh** have no user-settable bounds here — '
+            'they are computed automatically from correlation formulas '
+            'after every Run Prediction and shown with values + ranges '
+            'in the **Predictions tab → Tier 2 validators** section below.'
+        )
 
     st.divider()
     run_btn = st.button('Run Prediction', type='primary', use_container_width=True)
@@ -1205,7 +1209,7 @@ with tab_pred:
         with st.expander(
             f'Tier 2 — Physical Consistency Validators  '
             f'{"✓ All OK" if not tier2_viols else f"⚠ {len(tier2_viols)} flagged"}',
-            expanded=bool(tier2_viols)
+            expanded=True
         ):
             st.caption(
                 'Checked after prediction. Violation does not block inference but '
