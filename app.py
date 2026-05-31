@@ -816,42 +816,34 @@ with st.sidebar:
                                'peh_max', help='[POST-PREDICTION VALIDATOR] Pe_h = Re·Pr. '
                                               'Derived from Re and Pr — not independent. '
                                               'High Pe_h: convection dominates thermal transport.')
-        st.caption('Nu · Bi · Sh — no sliders, computed after prediction.')
+        # ── Nu / Bi / Sh — show computed values (or placeholder) ────────────────
+        st.markdown('**Nu · Bi · Sh** — computed from correlations after prediction:')
+        _t2_sb  = st.session_state.get('pred_results', {}).get('t2_vals', {})
+        _T2_SB = [
+            ('Nu', 'hL/k',      1.0,   100.0,  'Martin (1977) jet-impingement'),
+            ('Bi', 'hL/k_s',    0.001,   0.1,  'Want Bi << 1 (thin faceplate)'),
+            ('Sh', 'k_mL/D_m',  0.5,    50.0,  'Chilton-Colburn analogy'),
+        ]
+        for sym, formula, lo, hi, note in _T2_SB:
+            val = _t2_sb.get(sym)
+            if val is None:
+                st.caption(f'**{sym}** = {formula}  `—`  range `[{lo}, {hi}]`  ← {note}')
+            else:
+                ok   = lo <= val <= hi
+                icon = '✅' if ok else '⚠️'
+                st.markdown(
+                    f'{icon} **{sym}** = {formula}  '
+                    f'`{val:.3g}` ← range `[{lo}, {hi}]`  '
+                    f'*{note}*'
+                )
+        if not _t2_sb:
+            st.caption('↑ Click **Run Prediction** to compute values.')
 
     st.divider()
     run_btn = st.button('Run Prediction', type='primary', use_container_width=True)
     if st.button('Reset to defaults', use_container_width=True):
         st.session_state['_reset_requested'] = True
         st.rerun()
-
-    # ── Tier 2 results in sidebar (visible after Run Prediction) ──────────────
-    if 'pred_results' in st.session_state:
-        _t2 = st.session_state['pred_results'].get('t2_vals', {})
-        _pb = st.session_state['pred_results'].get('pred_bounds')
-        if _t2:
-            st.divider()
-            st.markdown('**Tier 2 — Post-Prediction Validators**')
-            _T2_RANGES_SB = {
-                'Pr':   (_pb.Pr[0],  _pb.Pr[1])   if _pb else (0.5, 100.0),
-                'Pe_h': (0.1,        _pb.Pe_h[1])  if _pb else (0.1, 100000.0),
-                'Nu':   (1.0,   100.0),
-                'Bi':   (0.001,   0.1),
-                'Sh':   (0.5,    50.0),
-            }
-            _T2_FMT_SB = {
-                'Pr':'cpμ/k', 'Pe_h':'Re·Pr',
-                'Nu':'hL/k',  'Bi':'hL/k_s', 'Sh':'k_mL/Dm',
-            }
-            for sym in ['Pr', 'Pe_h', 'Nu', 'Bi', 'Sh']:
-                val    = _t2.get(sym)
-                lo, hi = _T2_RANGES_SB[sym]
-                ok     = (val is not None) and (lo <= val <= hi)
-                icon   = '✅' if ok else '⚠️'
-                val_s  = f'{val:.3g}' if val is not None else 'n/a'
-                st.markdown(
-                    f'{icon} **{sym}** = {_T2_FMT_SB[sym]}  '
-                    f'`{val_s}` ← range `[{lo:.3g}, {hi:.3g}]`'
-                )
 
     st.divider()
     with st.expander('Physics Reference'):
