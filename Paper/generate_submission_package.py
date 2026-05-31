@@ -463,11 +463,29 @@ intuition_box(doc,
     'and every parametric tool is locked to exactly one of them.')
 
 p(doc,
-    'We present a dual-track surrogate framework. Track 1 (PCGM) provides efficient '
-    'parametric search with physics guardrails within a fixed topology. Track 2 (VICES) '
-    'introduces topology-level search using Constructive Solid Geometry (CSG), '
-    'synthesising showerhead geometries from four fundamentally different topology '
-    'families — designs that Track 1 cannot represent at any parameter setting. '
+    'We present a dual-track surrogate framework with two distinct geometry synthesis approaches:'
+)
+bp(doc, 'Track 1 — PCGM (Physics-Constrained Geometric Morphogenesis)',
+    'a parametric approach. The showerhead geometry is described by a small set '
+    'of continuous sliders — nozzle diameter, hole spacing, plenum height, '
+    'faceplate thickness, and standoff gap. PCGM generates a hex-pattern nozzle '
+    'array from these parameters and evaluates it with a GNN surrogate in seconds. '
+    'Think of this as the engineer\'s traditional design space: you adjust '
+    'familiar parameters and observe how performance changes. '
+    'The topology — the fundamental arrangement and connectivity of the internal geometry — '
+    'is fixed.')
+bp(doc, 'Track 2 — VICES (Voxel-Implicit Computational Engineering Synthesis)',
+    'a geometric synthesis approach. Instead of sliders, VICES builds showerhead '
+    'geometries from scratch using Constructive Solid Geometry (CSG) — combining '
+    'primitive shapes (cylinders, cones, boxes) through boolean operations '
+    '(union, subtract, intersect) to create four fundamentally different topology '
+    'families: baffled plenums, conical diffusers, annular ring nozzle arrays, '
+    'and two-zone split plenums. '
+    'These are not variations of the hex array — they are structurally different '
+    'showerhead architectures that no parameter setting in Track 1 can produce.')
+p(doc,
+    'Both tracks share the same physics calculator, GNN surrogate, guardrail engine, '
+    'and GA-guided optimizer. They differ only in how the geometry is created. '
     'The framework uses 123 self-generated OpenFOAM reactingFoam '
     'simulations as training data — fully open-source and reproducible. '
     'All code is at https://github.com/Ranaam21/cfd-ald-app.'

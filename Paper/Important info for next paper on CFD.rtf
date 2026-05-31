@@ -1,0 +1,580 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2869
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fswiss\fcharset0 Helvetica-Bold;\f2\fnil\fcharset0 STIXTwoMath-Regular;
+\f3\fnil\fcharset128 HiraginoSans-W3;\f4\fnil\fcharset77 ZapfDingbatsITC;\f5\fnil\fcharset0 LucidaGrande;
+}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;}
+{\*\expandedcolortbl;;\cssrgb\c0\c0\c0;}
+\margl1440\margr1440\vieww19760\viewh14460\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 \
+\pard\pardeftab720\sl368\sa213\partightenfactor0
+
+\f1\b\fs32 \cf2 \expnd0\expndtw0\kerning0
+\ul \ulc2 Important info/ essential read:
+\f0\b0 \ulnone \
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\fs24 \cf0 \kerning1\expnd0\expndtw0 \
+Also another question for general discussion, we are using OpenFOAM. some PHD person recommeneded me to use   \
+  DriverNet data set from MIT if you want to learn CFD and also build a solver which can improve the result by  \
+  2-3% then that is also an achievement. What do you say about our currrent dataset approach and what we built  \
+  and how the suggestion I got would make sense or not or whatever i BUILT IS novel and that involves somehow   \
+  modifying my own solver. I had thoughts earlier that I will build a chaos theory based solver to solve the    \
+  flow eddies...                                                                                                \
+  \
+
+\f2 \uc0\u9210 
+\f0  Great discussion question. Let me give you an honest, structured analysis of all three angles.\
+\
+  ---\
+  1. DrivAerNet (MIT) \'97 Does it make sense for you?\
+  \
+  What it is: DrivAerNet++ is a large-scale dataset of 3D car body aerodynamics \'97 thousands of automotive shapes\
+  with RANS CFD (drag, lift, surface pressure, velocity fields). Very well-cited for automotive surrogate work.\
+\
+  Why it doesn't fit your work:\
+\
+  \uc0\u9484 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a6
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a6
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9488 \
+  \uc0\u9474           \u9474       DrivAerNet       \u9474         Your ALD work        \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Re       \u9474  Millions (turbulent)  \u9474  1\'9610 (creeping laminar)     \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Physics  \u9474  External aerodynamics \u9474  Enclosed reactive transport \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Species  \u9474  None                  \u9474  TMA/N2 with Da guardrail    \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Geometry \u9474  Car bodies            \u9474  Showerheads, nozzle arrays  \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Goal     \u9474  Drag prediction       \u9474  TMA uniformity optimisation \u9474 \
+  \uc0\u9492 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a8
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a8
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9496 \
+\
+  The physics are fundamentally different. Pretraining on DrivAerNet would give your GNN priors for high-Re\
+  turbulent external flows \'97 exactly the wrong inductive bias for ALD creeping flow. It would hurt more than\
+  help.\
+\
+  What would actually help: AirfRANS (low-Re airfoil RANS) or CFDBench (closed-domain flows) \'97 which were\
+  already in your original plan and are better domain matches.\
+\
+  ---\
+  2. "Build a solver for 2-3% improvement" \'97 Is it worth it?\
+  \
+  What the PhD person likely means: A physics-informed neural network (PINN) or a hybrid ML-CFD solver where the\
+  model learns to satisfy the PDEs (Navier-Stokes, species transport) as soft constraints during training \'97 not\
+  just fit data.\
+\
+  Honest assessment: Yes, it's an academic achievement, but it's a different paper entirely, not an improvement\
+  on what you've built. Here's why:\
+\
+  - Your approach: data-driven surrogate (GNN learns from CFD outputs)\
+  - Their suggestion: equation-informed solver (model learns to solve PDEs)\
+\
+  The "2-3% improvement" claim is in surrogate accuracy (MAE, R\'b2). Your surrogate already achieves < 1% relative\
+  MAE on pressure and temperature. The 2-3% would only matter on the velocity field which is currently the\
+  weakest point \'97 but for the optimizer's purpose (ranking designs by TMA-UI), it doesn't change the outcome.\
+\
+  More importantly: your novelty is NOT in surrogate accuracy. It's in the dual-track topology search + Catalan \
+  characterisation + guardrail engine. No custom solver addresses any of that.\
+\
+  ---\
+  3. What you've built \'97 Is it novel?\
+\
+  Genuinely yes, and here's the honest comparison:\
+\
+  \uc0\u9484 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a6
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9488 \
+  \uc0\u9474            What others do            \u9474                    What you built                    \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Single-topology parametric search   \u9474  Dual-track: parametric + CSG topology               \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  No physics guardrails               \u9474  11-dimensional two-tier guardrail engine            \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Random or Bayesian parameter search \u9474  GA-guided Catalan-aware topology search             \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  DrivAerNet/standard datasets        \u9474  Self-generated ALD-specific reactive transport data \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Flow/pressure only                  \u9474  Flow + heat + species (Da, Pe_m for ALD kinetics)   \u9474 \
+  \uc0\u9492 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a8
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9496 \
+\
+  No existing paper combines all of these for ALD showerhead design. That's your novelty claim and it holds.\
+\
+  ---\
+  4. Chaos theory for flow eddies \'97 Your earlier idea\
+\
+  This is intellectually interesting but has a fundamental issue for your specific case:\
+\
+  ALD operates at Re ~ 1\'9610 \'97 completely laminar, no eddies. Chaos and turbulent eddies appear above Re ~ 2300\
+  (transition) and fully turbulent above ~ 4000. In ALD's creeping flow, the Navier-Stokes solution is\
+  deterministic and smooth \'97 no Lorenz attractors, no strange attractors, no butterfly effects.\
+\
+  Where it would be valid: Industrial chemical reactors running at Re > 10,000 (mixing vessels, heat exchangers)\
+  where turbulent eddies genuinely affect mixing uniformity. Or if you extended your work to high-Re\
+  semiconductor plasma etching tools.\
+\
+  If you want to pursue this idea: The more modern equivalent is Koopman operator theory \'97 linearising nonlinear\
+  fluid dynamics for faster simulation. That's an active research area and publishable. But it would require\
+  high-Re flow data, not ALD data.\
+\
+  ---\
+  Bottom line\
+\
+  Your current work is stronger and more novel than the DrivAerNet + custom solver path for the specific problem\
+  you're solving. The PhD suggestion is valid general advice for someone building a generic CFD surrogate \'97\
+  it's not better advice for ALD topology optimisation specifically.\
+\
+  The chaos theory idea is the right instinct applied to the wrong regime. Save it for a future paper on high-Re\
+  industrial reactor mixing where it would actually apply.\
+\
+
+\f4 \uc0\u10043 
+\f0  Churned for 48s \'b7 1 shell still running\
+\
+
+\f4 \uc0\u10095 
+\f0  Is HHL model part of this  If you want to pursue this idea: The more modern equivalent is Koopman operator    \
+  theory \'97 linearising nonlinear                                                                                \
+    fluid dynamics for faster simulation. That's an active research area and publishable. But it would require  \
+    high-Re flow data, not ALD data.                                                                            \
+                                                                                                                \
+\
+
+\f2 \uc0\u9210 
+\f0  Yes \'97 HHL fits directly into this picture. Let me connect all three pieces:\
+\
+  ---\
+  The Chain: Navier-Stokes 
+\f5 \uc0\u8594 
+\f0  Koopman 
+\f5 \uc0\u8594 
+\f0  HHL\
+  \
+  Step 1 \'97 The problem with CFD:\
+  Navier-Stokes equations are nonlinear PDEs. After discretisation you get a nonlinear system. Classical solvers\
+  (like OpenFOAM's SIMPLE/PISO) iterate to convergence \'97 expensive.\
+\
+  Step 2 \'97 Koopman linearises:\
+  Koopman operator theory says: any nonlinear dynamical system can be represented as a linear operator acting on\
+  a (possibly infinite-dimensional) space of observable functions. So instead of solving nonlinear NS directly,\
+  you lift the system into a higher-dimensional linear space and solve it there.\
+\
+  Nonlinear NS  
+\f5 \uc0\u8594 
+\f0   Koopman lifting  
+\f5 \uc0\u8594 
+\f0   Linear system  Ax = b\
+\
+  Step 3 \'97 HHL solves Ax = b exponentially faster:\
+  The Harrow-Hassidim-Lloyd (HHL) algorithm (2009) solves a linear system Ax = b in O(log N) quantum operations\
+  vs O(N) classically (for sparse, well-conditioned A). So:\
+\
+  Koopman 
+\f5 \uc0\u8594 
+\f0  linear system 
+\f5 \uc0\u8594 
+\f0  HHL 
+\f5 \uc0\u8594 
+\f0  solution\
+  Classical: O(N\'b3) 
+\f5 \uc0\u8594 
+\f0  Koopman: O(N) 
+\f5 \uc0\u8594 
+\f0  HHL: O(log N)\
+\
+  This is the theoretical chain that makes quantum-accelerated CFD plausible.\
+\
+  ---\
+  The honest caveats\
+\
+  \uc0\u9484 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a6
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9488 \
+  \uc0\u9474      Issue      \u9474                                         Reality                                         \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Read-out       \u9474  After HHL solves the quantum state, extracting all N solution components classically   \u9474 \
+  \uc0\u9474  problem        \u9474  costs O(N) \'97 which partially negates the speedup                                       \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Condition      \u9474  HHL scales as O(\u954 \'b2 log N) where \u954  is the condition number. NS matrices can be badly    \u9474 \
+  \uc0\u9474  number         \u9474  conditioned                                                                            \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Hardware       \u9474  Needs fault-tolerant quantum computers \'97 NISQ devices today can't run HHL at useful    \u9474 \
+  \uc0\u9474                 \u9474  scale                                                                                  \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Koopman        \u9474  In practice you use EDMD (Extended Dynamic Mode Decomposition) with finite observables \u9474 \
+  \uc0\u9474  truncation     \u9474   \'97 approximation error                                                                 \u9474 \
+  \uc0\u9492 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a8
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9496 \
+\
+  ---\
+  Where this connects to YOUR work\
+\
+  You already have the QuantumRAG paper (Hilbert space, quantum fidelity). This gives you a natural third paper\
+  direction:\
+\
+  
+\f3 \uc0\u9614 
+\f0  "Quantum-Accelerated ALD Reactor Flow Simulation via Koopman-HHL: Linearising Laminar Reactive Transport for\
+  
+\f3 \uc0\u9614 
+\f0  Quantum Speedup"\
+\
+  The argument:\
+  - ALD's laminar flow (Re ~ 1\'9610) gives well-conditioned linear systems after Koopman \'97 better suited for HHL\
+  than turbulent flows \
+  - The Koopman eigenfunctions for creeping flow are known analytically (Stokes flow) \'97 no approximation needed\
+  - Your existing OpenFOAM cases give ground truth to validate the Koopman-HHL predictions\
+\
+  This would be Paper 6 in your portfolio \'97 bridging your quantum work (QuantumRAG) with your CFD work (this\
+  project). That cross-domain bridge is exactly what top journals reward.\
+\
+  ---\
+  So to directly answer your question\
+\
+  Yes, HHL is part of this. The full research stack would be:\
+\
+  Navier-Stokes (nonlinear)\
+         
+\f5 \uc0\u8595 
+\f0  Koopman operator\
+  Linear system Ax = b\
+         
+\f5 \uc0\u8595 
+\f0  HHL algorithm\
+  Quantum-exponential speedup\
+         
+\f5 \uc0\u8595 
+\f0  Classical read-out\
+  Flow field prediction\
+\
+  Your chaos theory instinct was directionally right \'97 Koopman IS a bridge between linear/nonlinear dynamics,\
+  and chaos theory (Lorenz, strange attractors) uses similar phase-space thinking. HHL is where quantum\
+  computing enters that same space.\
+\
+  For ALD specifically \'97 laminar regime means Koopman works cleanly. Save turbulent eddies + chaos for high-Re\
+  problems.\
+\
+
+\f4 \uc0\u10043 
+\f0  Churned for 34s \'b7 1 shell still running\
+\
+\uc0\u8251  recap: Building a Physics+DL CFD surrogate framework for ALD showerhead design \'97 both tracks (PCGM and VICES) \
+  complete, paper generated and ready for submission. Next: upload paper to Zenodo then submit to Chemical \
+  Engineering Journal.\
+\
+
+\f4 \uc0\u10095 
+\f0  based on the above discussion not sure if we added some kind of an object/ purpose of our work as we have     \
+  built:   More importantly: your novelty is NOT in surrogate accuracy. It's in the dual-track topology search  \
+  + Catalan                                                                                                     \
+    characterisation + guardrail engine. No custom solver addresses any of that. It is different than working   \
+  on building a solver on PDEs. This is more of geometric approach i would say specially track 2 in picture     \
+  than PINN kind of approach, What do you say?                                                                  \
+  \
+
+\f2 \uc0\u9210 
+\f0  You've identified something important that the paper doesn't state clearly enough. Let me unpack this.\
+\
+  ---\
+  What you've actually built \'97 correct framing\
+  \
+  You're right. This is fundamentally a computational geometry + design space exploration contribution, not a\
+  PDE solver contribution. The distinction matters enormously for how the paper is positioned.\
+\
+  What PINN / custom solver work does:\
+  - Takes a fixed geometry\
+  - Learns to solve Navier-Stokes faster / more accurately\
+  - Novelty = physics prediction quality\
+  - Design space: unchanged\
+  \
+  What you built:\
+  - Generates geometries that didn't previously exist (Track 2 VICES)\
+  - Uses boolean CSG trees to synthesise new topological families\
+  - Formally characterises how many designs are reachable (Catalan numbers)\
+  - Evaluates them with a surrogate (the GNN is just the evaluator \'97 it's not the novelty)\
+  - Novelty = design space accessibility\
+  \
+  The analogy is sharp:\
+\
+  \uc0\u9484 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a6
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a6
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9488 \
+  \uc0\u9474                    \u9474             PINN approach            \u9474                  Your approach                 \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Question answered \u9474  "Can I predict this geometry's flow \u9474  "Can I reach geometries no parametric tool    \u9474 \
+  \uc0\u9474                    \u9474   faster?"                           \u9474  can represent?"                               \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Bottleneck solved \u9474  Computation time                    \u9474  Design space coverage                         \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  Primary           \u9474  Better solver                       \u9474  Geometric topology synthesis                  \u9474 \
+  \uc0\u9474  contribution      \u9474                                      \u9474                                                \u9474 \
+  
+\f3 \'84\'a5
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a9
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a7
+\f0 \
+  \uc0\u9474  AlphaFold analogy \u9474  Faster homology modelling           \u9474  Predicting structures that didn't exist       \u9474 \
+  \uc0\u9474                    \u9474                                      \u9474  before                                        \u9474 \
+  \uc0\u9492 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a8
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 
+\f3 \'84\'a8
+\f0 \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9496 \
+\
+  ---\
+  The geometric framing is stronger for one reason\
+\
+  Track 2's +130% TMA-UI improvement doesn't come from a better surrogate. It comes from the fact that the\
+  annular ring geometry physically cannot be represented by any hex-array parameter setting. The geometry IS the\
+  contribution. The surrogate just measures it.\
+\
+  This is exactly what Noyron/LEAP71 argue: the bottleneck in engineering design is not analysis speed \'97 it's \
+  the ability to synthesise geometries outside the engineer's mental model. Your Catalan number characterisation\
+  formally proves why parametric tools miss these designs.\
+\
+  ---\
+  What's missing in the paper's stated objective\
+\
+  The current abstract says:\
+\
+  
+\f3 \uc0\u9614 
+\f0  "...enables topology-level geometry search... improving TMA-UI by +0.448..."\
+\
+  This frames it as "we found better designs." The stronger framing is:\
+\
+  
+\f3 \uc0\u9614 
+\f0  "...we formally characterise the topological design space using Catalan numbers and demonstrate that C(n-1) \
+  
+\f3 \uc0\u9614 
+\f0  distinct CSG tree topologies exist for n primitives \'97 a design space provably inaccessible to parametric \
+  
+\f3 \uc0\u9614 
+\f0  methods. Track 2 VICES synthesises geometries from this space and discovers designs achieving +130% TMA \
+  
+\f3 \uc0\u9614 
+\f0  uniformity improvement, demonstrating that the topology gap \'97 not surrogate accuracy \'97 is the binding \
+  
+\f3 \uc0\u9614 
+\f0  constraint in ALD showerhead design."\
+\
+  The key phrase: "topology gap \'97 not surrogate accuracy \'97 is the binding constraint." That's a scientific claim\
+  no PINN paper makes. It's new.\
+\
+  ---\
+  Yes \'97 specifically three places:\
+\
+  1. Abstract \'97 add "topology gap" framing\
+  2. Introduction \'97 explicitly distinguish from PINN/solver work, position as computational geometry\
+  3. Conclusion \'97 "topology matters more than accuracy" as the headline finding\
+\
+\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97 extra info on the work till date\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\
+\
+know:\
+\
+  ---\
+  What we used vs what you used in materials science\
+  \
+  \uc0\u9484 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9488 \
+  \uc0\u9474               \u9474       M3GNet (Materials)       \u9474    CGCNN (Materials)    \u9474       MultiHeadMGN (Ours)       \u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  Domain       \u9474  Crystal structures,           \u9474  Crystal property       \u9474  Fluid domain, CFD fields       \u9474 \
+  \uc0\u9474               \u9474  interatomic potentials        \u9474  prediction             \u9474                                 \u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  Nodes        \u9474  Atoms                         \u9474  Atoms                  \u9474  Mesh cells / point cloud       \u9474 \
+  \uc0\u9474               \u9474                                \u9474                         \u9474  points                         \u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  Edges        \u9474  Chemical bonds + 3-body       \u9474  Nearest-neighbour      \u9474  k-NN geometric proximity (k=6) \u9474 \
+  \uc0\u9474               \u9474  angles                        \u9474  bonds                  \u9474                                 \u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  Output       \u9474  Scalar: energy, band gap      \u9474  Scalar: formation      \u9474  Fields: Ux, Uy, Uz, p, T, TMA  \u9474 \
+  \uc0\u9474               \u9474                                \u9474  energy                 \u9474  at every node                  \u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  Origin       \u9474  CHGNet/M3GNet paper (2022)    \u9474  Xie & Grossman (2018)  \u9474  Pfaff et al., DeepMind (2021)  \u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  Implemented  \u9474  DGL / PyTorch                 \u9474  PyTorch                \u9474  PyG (PyTorch Geometric)        \u9474 \
+  \uc0\u9474  in           \u9474                                \u9474                         \u9474                                 \u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  Interaction  \u9474  2-body + 3-body angular       \u9474  2-body only            \u9474  2-body (edge = relative        \u9474 \
+  \uc0\u9474               \u9474                                \u9474                         \u9474  position + distance)           \u9474 \
+  \uc0\u9492 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9496 \
+\
+  ---\
+  Why MeshGraphNet and not M3GNet for our problem\
+\
+  M3GNet is designed for atomistic systems \'97 discrete atoms at crystallographic positions with periodic boundary\
+  conditions. It captures 3-body angular interactions because bond angles matter for crystal stability.\
+\
+  Our problem is a continuum fluid domain:\
+  - No atoms \'97 just continuous space discretised into 333K cells\
+  - No periodicity \'97 enclosed showerhead geometry\
+  - Need spatial field prediction at every point, not a single scalar\
+  - Multi-physics: flow + heat + species simultaneously \
+  \
+  MeshGraphNet was specifically designed for CFD mesh prediction \'97 it maps directly to our problem.\
+\
+  ---\
+  What our MultiHeadMGN adds on top of standard MGN\
+  \
+  Standard MGN has one output head. We added:\
+\
+  Shared encoder (22-dim input \uc0\u8594  256-dim latent)\
+           \uc0\u8595 \
+    15 \'d7 MGNProcessor  (message passing with residuals + LayerNorm)\
+           \uc0\u8595 \
+      \uc0\u9484 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9488 \
+    Flow head   Heat head  Species head\
+    [Ux,Uy,Uz,p]   [T]        [TMA]\
+\
+  The multi-head design lets each physics domain learn its own output mapping while sharing the geometric\
+  understanding encoded in the shared latent space.\
+\
+  ---\
+  The connection to your M3GNet experience\
+  \
+  The message-passing framework is identical conceptually \'97 you already understand it from M3GNet. The key\
+  difference is what the nodes and edges represent:\
+\
+  - M3GNet: node = Al/O atom at (x,y,z), edge = bond, message = atomic force contribution\
+  - MultiHeadMGN: node = fluid cell at (x,y,z), edge = geometric neighbour, message = local flow field\
+  contribution\
+\
+  Same mathematical machinery, completely different physical interpretation. Your M3GNet background is actually\
+  a strong foundation for understanding what we built \'97 the architectural intuition transfers directly.\
+\
+}
