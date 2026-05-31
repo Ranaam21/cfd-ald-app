@@ -65,7 +65,7 @@ def mlp(in_dim, out_dim, hidden=None, n_layers=2):
     for i in range(len(dims) - 1):
         mods.append(nn.Linear(dims[i], dims[i + 1]))
         if i < len(dims) - 2:
-            mods.append(nn.SiLU())
+            mods += [nn.SiLU(), nn.LayerNorm(dims[i + 1])]  # matches training notebook
     return nn.Sequential(*mods)
 
 
