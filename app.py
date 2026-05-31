@@ -753,56 +753,71 @@ with st.sidebar:
 
     st.divider()
     st.subheader('Physics Guardrail Bounds')
-    st.caption('Adjust bounds, then click Run Prediction. Violations show warnings in results.')
 
-    st.markdown('**Momentum Transfer**')
+    # ── Tier 1: Pre-evaluation design constraints ─────────────────────────────
+    st.markdown(
+        '**Tier 1 — Design Constraints** *(checked before inference)*',
+        help='These six numbers are computed directly from design parameters '
+             'before the surrogate runs. Violation means the design falls outside '
+             'the surrogate\'s training regime — predictions are unreliable.')
+    st.caption('Re · Ma · Eu · Da · Sc · Pe_m — block or flag the design before evaluation.')
+
+    st.markdown('**Momentum**')
     re_max  = _slider_btns('Re max — Reynolds number ρVD/μ',      500.0,   20000.0,  DEFAULTS['re_max'],  100.0,
-                           're_max',  help='Reynolds number Re = ρVD/μ — ratio of inertial to viscous forces. '
-                                          'Re < 2300: laminar. Re > 4000: turbulent. '
-                                          'Surrogate trained on laminar data; high Re predictions are extrapolations.')
+                           're_max',  help='[DESIGN CONSTRAINT] Reynolds number Re = ρVD/μ. '
+                                          'Re < 2300: laminar (surrogate valid). '
+                                          'Re > 4000: turbulent (surrogate extrapolates — flag this design).')
     ma_max  = _slider_btns('Ma max — Mach number V/a',             0.05,    1.0,      DEFAULTS['ma_max'],  0.01,
-                           'ma_max',  help='Mach number Ma = V/a — ratio of flow velocity to speed of sound. '
-                                          'Ma < 0.3: incompressible assumption valid. '
-                                          'Ma > 0.3: compressibility effects appear; surrogate accuracy degrades.')
-    eu_max  = _slider_btns('Eu max — Euler number Δp/½ρV²',       1000.0, 1e8, DEFAULTS['eu_max'],  1000.0,
-                           'eu_max',  help='Euler number Eu = Δp / (½ρV²) — dimensionless pressure drop across the showerhead. '
-                                          'ALD creeping-flow (low Re) naturally yields Eu ~ 1e5–1e7; this is physically correct. '
-                                          'Flag only if Eu > 1e8 (unrealistic pressure drop). '
-                                          'Use the raw Δp [Pa] metric for process-level pressure budget.')
-
-    st.markdown('**Heat Transfer**')
-    pr_min  = _slider_btns('Pr min — Prandtl number cpμ/k',        0.1,    2.0,      DEFAULTS['pr_min'],  0.05,
-                           'pr_min',  help='Prandtl number Pr = cp·μ/k — ratio of momentum diffusivity to thermal diffusivity. '
-                                          'Pr ≈ 0.71 for N₂ at process temperature. Governs thermal boundary layer thickness.')
-    pr_max  = _slider_btns('Pr max — Prandtl number cpμ/k',        2.0,   500.0,     DEFAULTS['pr_max'],  10.0,
-                           'pr_max',  help='Upper Pr bound. High Pr fluids have thin thermal BLs. '
-                                          'N₂ carrier gas stays near 0.71; large deviation signals wrong fluid properties.')
-    peh_max = _slider_btns('Pe_h max — Péclet number heat Re·Pr',  1000.0, 500000.0,  DEFAULTS['peh_max'], 1000.0,
-                           'peh_max', help='Péclet number (heat) Pe_h = Re·Pr — ratio of advective to diffusive heat transport. '
-                                          'High Pe_h: convection dominates, thin thermal BL. '
-                                          'Low Pe_h: diffusion smooths temperature gradients.')
-    st.caption('Nu (Nusselt hL/k), Bi (Biot hL/k_s) — available after CFD run only.')
+                           'ma_max',  help='[DESIGN CONSTRAINT] Ma = V/a. '
+                                          'Ma > 0.3 invalidates incompressible surrogate assumption.')
+    eu_max  = _slider_btns('Eu max — Euler number Δp/½ρV²',       1000.0,  1e8,      DEFAULTS['eu_max'],  1000.0,
+                           'eu_max',  help='[DESIGN CONSTRAINT] Eu = Δp/(½ρV²). '
+                                          'ALD creeping-flow naturally gives Eu ~ 1e5–1e7 (physically correct). '
+                                          'Flag only Eu > 1e8 (unrealistic geometry). '
+                                          'Use raw Δp [Pa] metric for process budget.')
 
     st.markdown('**Mass Transfer & Reaction**')
     sc_min  = _slider_btns('Sc min — Schmidt number μ/ρD_m',       0.05,   2.0,      DEFAULTS['sc_min'],  0.05,
-                           'sc_min',  help='Schmidt number Sc = μ/(ρ·D_m) — ratio of momentum diffusivity to mass diffusivity. '
-                                          'Governs the concentration boundary layer. Sc > 1 means mass diffuses slower than momentum.')
+                           'sc_min',  help='[DESIGN CONSTRAINT] Sc = μ/(ρD_m). '
+                                          'TMA in N₂: Sc ≈ 1–3. Flags incorrect diffusivity D_m specification.')
     sc_max  = _slider_btns('Sc max — Schmidt number μ/ρD_m',       2.0,   50.0,      DEFAULTS['sc_max'],  1.0,
-                           'sc_max',  help='Upper Sc bound. TMA in N₂ has Sc ≈ 1–3. '
-                                          'Values outside this range suggest incorrect diffusivity D_m.')
-    pem_max = _slider_btns('Pe_m max — Péclet number mass Re·Sc',  1000.0, 500000.0,  DEFAULTS['pem_max'], 1000.0,
-                           'pem_max', help='Péclet number (mass) Pe_m = Re·Sc — ratio of advective to diffusive mass transport. '
-                                          'High Pe_m: convection dominates species transport. '
-                                          'Low Pe_m: diffusion spreads precursor uniformly (favourable for ALD).')
+                           'sc_max',  help='[DESIGN CONSTRAINT] Upper Sc bound. '
+                                          'TMA in N₂ has Sc ≈ 1–3. Values outside this range signal wrong D_m.')
+    pem_max = _slider_btns('Pe_m max — Péclet mass Re·Sc',         1000.0, 500000.0,  DEFAULTS['pem_max'], 1000.0,
+                           'pem_max', help='[DESIGN CONSTRAINT] Pe_m = Re·Sc. '
+                                          'ALD operates at Pe_m ≈ 0.1–10 (diffusion-important). '
+                                          'High Pe_m means convection dominates and uneven jets cannot be corrected by diffusion.')
     da_min  = _slider_btns('Da min — Damköhler number k_rxn·L/V',  0.0001, 0.1,      DEFAULTS['da_min'],  0.0001,
                            'da_min',  fmt='%g',
-                           help='Damköhler number Da = k_rxn·L/V — ratio of surface reaction rate to convective transport rate. '
-                                'Da >> 1: transport-limited (precursor depletes before reacting). '
-                                'Da << 1: reaction-limited (ideal ALD self-limiting regime).')
+                           help='[DESIGN CONSTRAINT] Da = k_rxn·L/V. '
+                                'Da << 1: reaction-limited — the ideal ALD self-limiting regime. '
+                                'Da >> 1: transport-limited — precursor depletes before spreading uniformly.')
     da_max  = _slider_btns('Da max — Damköhler number k_rxn·L/V',  1.0,   500.0,     DEFAULTS['da_max'],  10.0,
-                           'da_max',  help='Upper Da limit. Very high Da means the precursor is consumed too fast '
-                                          'before reaching the wafer centre → non-uniform deposition.')
-    st.caption('Sh (Sherwood k_m L/D_m) — available after CFD run only.')
+                           'da_max',  help='[DESIGN CONSTRAINT] Upper Da limit. '
+                                          'Very high Da means precursor consumed before reaching wafer edges → non-uniform deposition.')
+
+    # ── Tier 2: Post-prediction physical consistency validators ───────────────
+    st.divider()
+    with st.expander('Tier 2 — Physical Consistency Validators *(checked after prediction)*',
+                     expanded=False):
+        st.caption(
+            'Pr · Pe_h · Nu · Bi · Sh — validated after surrogate prediction. '
+            'Violation flags the design for CFD refinement but does not block inference.'
+        )
+        st.markdown('**Heat Transfer**')
+        pr_min  = _slider_btns('Pr min — Prandtl number cpμ/k',       0.1,   2.0,     DEFAULTS['pr_min'],  0.05,
+                               'pr_min',  help='[POST-PREDICTION VALIDATOR] Pr = cpμ/k. '
+                                              'Pr ≈ 0.71 for N₂ at 393 K — essentially fixed. '
+                                              'Flags inconsistent fluid property specification.')
+        pr_max  = _slider_btns('Pr max — Prandtl number cpμ/k',       2.0,  500.0,    DEFAULTS['pr_max'],  10.0,
+                               'pr_max',  help='[POST-PREDICTION VALIDATOR] Upper Pr bound. '
+                                              'N₂ stays near 0.71; large deviation signals wrong thermal properties.')
+        peh_max = _slider_btns('Pe_h max — Péclet heat Re·Pr',        1000.0, 500000.0, DEFAULTS['peh_max'], 1000.0,
+                               'peh_max', help='[POST-PREDICTION VALIDATOR] Pe_h = Re·Pr. '
+                                              'Derived from Re and Pr — not independent. '
+                                              'High Pe_h: convection dominates thermal transport.')
+        st.caption('Nu (Nusselt hL/k) and Bi (Biot hL/k_s) are computed from CFD fields — '
+                   'shown in results after Run Prediction.')
 
     st.divider()
     run_btn = st.button('Run Prediction', type='primary', use_container_width=True)
@@ -1083,15 +1098,41 @@ with tab_pred:
         dim_vals['Eu'] = Eu
         gr_result = engine.check(dim_vals)
 
-        if gr_result.passed:
-            st.success(f'PASS  confidence {gr_result.confidence:.3f}')
+        # ── Tier 1: Design Constraints ────────────────────────────────────────
+        tier1_symbols = {'Re', 'Ma', 'Eu', 'Da', 'Sc', 'Pe_m'}
+        tier1_viols = [v for v in gr_result.violations if v.symbol in tier1_symbols]
+        tier2_viols = [v for v in gr_result.violations if v.symbol not in tier1_symbols]
+
+        if not tier1_viols:
+            st.success(f'Tier 1 Design Constraints — PASS  '
+                       f'(Re · Ma · Eu · Da · Sc · Pe_m all within bounds)  '
+                       f'confidence {gr_result.confidence:.3f}')
         else:
-            st.error(f'FAIL  confidence {gr_result.confidence:.3f}')
-            for v in gr_result.violations:
+            st.error(f'Tier 1 Design Constraints — FAIL  confidence {gr_result.confidence:.3f}')
+            for v in tier1_viols:
                 st.warning(
                     f'**{v.symbol}** = {v.value:.4g}  '
                     f'(allowed [{v.lo:.4g}, {v.hi:.4g}])  {v.message}'
                 )
+
+        # ── Tier 2: Post-prediction Validators ────────────────────────────────
+        with st.expander('Tier 2 Physical Consistency Validators (Pr · Pe_h · Nu · Bi · Sh)'):
+            if not tier2_viols:
+                st.success('All post-prediction validators within bounds.')
+            else:
+                st.warning(f'{len(tier2_viols)} validator(s) flagged — '
+                           'consider CFD refinement for this design.')
+                for v in tier2_viols:
+                    st.warning(
+                        f'**{v.symbol}** = {v.value:.4g}  '
+                        f'(allowed [{v.lo:.4g}, {v.hi:.4g}])  {v.message}'
+                    )
+            st.caption(
+                'Nu (Nusselt) and Bi (Biot) are derived from CFD fields and shown '
+                'in the metrics row above when available. Sh (Sherwood) requires '
+                'reactive transport CFD results.'
+            )
+
         for flag in gr_result.special_flags:
             st.info(f'Flag: {flag}')
         for rec in gr_result.recommendations:

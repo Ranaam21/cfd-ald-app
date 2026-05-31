@@ -147,8 +147,8 @@ def h(doc, text, level=1):
 _ACRONYMS_BOLDED = set()
 _KNOWN_ACRONYMS = [
     'ALD','GNN','CFD','SDF','CSG','PCGM','VICES','KPI','TMA','TMA-UI',
-    'OOF','MAE','RANS','SST','MLP','HBM','TSV','GPU','CPU','API',
-    'Re','Ma','Eu','Pr','Nu','Bi','Sc','Sh','Da','Pe',
+    'OOF','MAE','RANS','SST','MLP','HBM','TSV','GPU','CPU','API','GA',
+    'Re','Ma','Eu','Pr','Nu','Bi','Sc','Sh','Da','Pe','Pe_h','Pe_m',
 ]
 
 def p(doc, text, size=11, justify=True, after=6):
@@ -202,6 +202,17 @@ def where_block(doc, defs):
     r2 = wp.add_run(defs)
     sf(r2, size=10, italic=True)
 
+def _set_table_full_width(tbl):
+    """Force table to span full text width (100% of column)."""
+    tblPr = tbl._tbl.tblPr
+    # Remove any existing tblW
+    for existing in tblPr.findall(qn('w:tblW')):
+        tblPr.remove(existing)
+    tblW = OxmlElement('w:tblW')
+    tblW.set(qn('w:type'), 'pct')
+    tblW.set(qn('w:w'),    '5000')   # 5000 = 100% in Word's pct units
+    tblPr.append(tblW)
+
 def _set_cell_bg(cell, hex_color):
     """Set background colour of a table cell."""
     tc   = cell._tc
@@ -215,9 +226,9 @@ def _set_cell_bg(cell, hex_color):
 def intuition_box(doc, question, text):
     """Grey shaded intuition box matching QuantumRAG style."""
     tbl  = doc.add_table(rows=1, cols=1)
+    _set_table_full_width(tbl)
     cell = tbl.rows[0].cells[0]
     _set_cell_bg(cell, 'F2F3F4')
-    cell.width = Inches(6.0)
     cp = cell.paragraphs[0]
     cp.paragraph_format.space_before = Pt(4)
     cp.paragraph_format.space_after  = Pt(4)
@@ -231,6 +242,7 @@ def intuition_box(doc, question, text):
 def key_finding_box(doc, text):
     """Light-blue key-finding callout box."""
     tbl  = doc.add_table(rows=1, cols=1)
+    _set_table_full_width(tbl)
     cell = tbl.rows[0].cells[0]
     _set_cell_bg(cell, 'D6EAF8')
     cp = cell.paragraphs[0]
@@ -306,7 +318,7 @@ r = tp.add_run(
     'A Physics-Guardrailed Dual-Track Surrogate Framework for '
     'Atomic Layer Deposition Showerhead Geometry Optimisation: '
     'Parametric Morphogenesis and Voxel-Implicit Constructive '
-    'Solid Geometry Topology Search'
+    'Solid Geometry Topology-Aware Search'
 )
 sf(r, size=16, bold=True, color=(0,51,102))
 
@@ -319,7 +331,7 @@ afp.alignment = WD_ALIGN_PARAGRAPH.CENTER
 r = afp.add_run(
     'Independent Researcher\namit21aim@gmail.com\n'
     'ORCID: https://orcid.org/0009-0008-5998-6560\n'
-    '*Corresponding author  ·  May 2026'
+    'Jun 2026'
 )
 sf(r, size=10, italic=True)
 doc.add_paragraph()
@@ -508,12 +520,24 @@ bp(doc, 'Module 7 — Verification',
 h(doc, '4. Physics Guardrail Engine')
 p(doc,
     'A key novelty is the explicit physics guardrail engine that validates every '
-    'design before surrogate evaluation, preventing the optimizer from recommending '
-    'physically invalid designs — a common failure mode of purely data-driven '
-    'approaches. Each guardrail is a dimensionless number with a user-settable range.'
+    'design before and after surrogate evaluation. We distinguish two tiers of '
+    'dimensionless numbers with distinct roles in the pipeline:'
 )
+bp(doc, 'Tier 1 — Design constraints (Re, Ma, Eu, Da, Sc, Pe_m)',
+    'computed directly from design parameters before the surrogate runs. '
+    'Violation means the design falls outside the surrogate\'s training regime — '
+    'predictions are unreliable. These six numbers block or flag the design '
+    'before inference.')
+bp(doc, 'Tier 2 — Physical consistency validators (Pr, Pe_h, Nu, Bi, Sh)',
+    'validated after surrogate prediction using predicted field values. '
+    'Violation does not block inference but flags the design for CFD refinement. '
+    'These five numbers are either derived from the solution (Nu, Bi, Sh) or '
+    'essentially fixed for a given gas mixture (Pr ≈ 0.71 for N₂, Pe_h = Re·Pr).')
 
-h(doc, '4.1 Momentum Transfer Guardrails', level=2)
+h(doc, '4.1 Tier 1 — Design Constraints', level=2)
+p(doc, 'The following six numbers are evaluated before surrogate inference:')
+
+h(doc, '4.1a Momentum Transfer', level=3)
 bp(doc, 'Reynolds Number Re = rho*V*D / mu',
     'ratio of inertial to viscous forces. rho = gas density [kg/m^3], '
     'V = nozzle jet velocity [m/s], D = nozzle diameter [m], '
@@ -546,32 +570,15 @@ intuition_box(doc,
     'What actually matters for the process is the absolute pressure drop in Pascals '
     '(target < 500 Pa) — that is why we report both.')
 
-h(doc, '4.2 Heat Transfer Guardrails', level=2)
-bp(doc, 'Prandtl Number Pr = cp*mu / k',
-    'ratio of momentum diffusivity to thermal diffusivity. '
-    'cp [J/(kg.K)] = specific heat, k [W/(m.K)] = thermal conductivity. '
-    'Pr ≈ 0.71 for N2 at 393 K. Guards inconsistent fluid property specification.')
-bp(doc, 'Nusselt Number Nu = h*L / k',
-    'ratio of convective to conductive heat transfer. '
-    'h [W/(m^2.K)] = convective coefficient, L [m] = characteristic length. '
-    'Bounds anchored to jet-impingement correlations [12].')
-bp(doc, 'Biot Number Bi = h*L / k_s',
-    'ratio of surface convection to faceplate internal conduction. '
-    'k_s [W/(m.K)] = solid thermal conductivity. Bi << 1 validates the '
-    'uniform wall temperature boundary condition assumption.')
-
-h(doc, '4.3 Mass Transfer and ALD Kinetics Guardrails', level=2)
+h(doc, '4.1b Mass Transfer and ALD Kinetics (Tier 1)', level=3)
 bp(doc, 'Schmidt Number Sc = mu / (rho * D_m)',
-    'ratio of momentum diffusivity to mass diffusivity. '
+    '[DESIGN CONSTRAINT] ratio of momentum to mass diffusivity. '
     'D_m [m^2/s] = TMA diffusivity in N2. Sc ≈ 1–3 for TMA/N2. '
-    'Guards diffusion-convection balance consistency.')
-bp(doc, 'Sherwood Number Sh = k_m * L / D_m',
-    'mass-transfer analogue of Nusselt. k_m [m/s] = mass transfer coefficient. '
-    'Bounds anchored to the Mendeley Sh–Re–Sc dataset [13].')
-bp(doc, 'Peclet Numbers Pe_h = Re*Pr  and  Pe_m = Re*Sc',
-    'dimensionless advection-to-diffusion ratio for heat (Pe_h) and mass (Pe_m). '
-    'ALD operates at Pe_m ≈ 0.1–10 (diffusion-important regime). '
-    'Guards prevent evaluation outside training distribution.')
+    'Flags incorrect D_m specification.')
+bp(doc, 'Peclet Number (mass) Pe_m = Re * Sc',
+    '[DESIGN CONSTRAINT] advection-to-diffusion ratio for mass transport. '
+    'ALD operates at Pe_m ≈ 0.1–10 (diffusion-important). '
+    'High Pe_m: convection dominates, uneven jets cannot be corrected by diffusion.')
 intuition_box(doc,
     'What do Peclet numbers tell us — advection vs diffusion?',
     'Imagine two ways a gas molecule can travel from a nozzle to the wafer: '
@@ -597,6 +604,35 @@ intuition_box(doc,
     'exactly the non-uniformity ALD engineers dread. '
     'ALD\'s self-limiting chemistry only works when delivery wins the race (Da << 1): '
     'gas spreads everywhere first, then reacts uniformly.')
+
+h(doc, '4.2 Tier 2 — Physical Consistency Validators', level=2)
+p(doc,
+    'The following five numbers are checked after surrogate prediction. '
+    'Violation does not block inference but flags the design for CFD refinement. '
+    'Three of these (Nu, Bi, Sh) are results of the CFD simulation, not '
+    'quantities computable before solving — they validate the physical '
+    'consistency of the surrogate\'s predictions against literature correlations.'
+)
+bp(doc, 'Prandtl Number Pr = cp*mu / k  [Tier 2]',
+    'ratio of momentum to thermal diffusivity. Pr ≈ 0.71 for N2 at 393 K — '
+    'essentially fixed for a given carrier gas. '
+    'Acts as a fluid-property consistency check; rarely violated in practice.')
+bp(doc, 'Peclet Number (heat) Pe_h = Re*Pr  [Tier 2]',
+    'derived from Re and Pr — not an independent number. '
+    'Validates that the advection-diffusion balance for heat is consistent '
+    'with the training distribution.')
+bp(doc, 'Nusselt Number Nu = h*L / k  [Tier 2]',
+    'ratio of convective to conductive heat transfer. Computed from the '
+    'predicted temperature field after inference. '
+    'Bounds anchored to jet-impingement correlations [12].')
+bp(doc, 'Biot Number Bi = h*L / k_s  [Tier 2]',
+    'ratio of surface convection to faceplate internal conduction. '
+    'k_s [W/(m.K)] = solid thermal conductivity. Bi << 1 validates the '
+    'uniform wall temperature boundary condition assumed during CFD and inference.')
+bp(doc, 'Sherwood Number Sh = k_m*L / D_m  [Tier 2]',
+    'mass-transfer analogue of Nusselt. k_m [m/s] = mass transfer coefficient. '
+    'Computed from species field after inference. '
+    'Bounds anchored to the Mendeley Sh–Re–Sc dataset [13].')
 
 # ── 5. Track 1 PCGM ──────────────────────────────────────────────────────────
 h(doc, '5. Track 1 — Physics-Constrained Geometric Morphogenesis (PCGM)')
@@ -1067,7 +1103,7 @@ p(doc2,
     'I am pleased to submit for your consideration the manuscript titled '
     '"A Physics-Guardrailed Dual-Track Surrogate Framework for ALD Showerhead '
     'Geometry Optimisation: Parametric Morphogenesis and Voxel-Implicit CSG '
-    'Topology Search" for publication in Chemical Engineering Journal.'
+    'Topology-Aware Search" for publication in Chemical Engineering Journal.'
 )
 p(doc2,
     'This work addresses a fundamental challenge in ALD reactor engineering: '
