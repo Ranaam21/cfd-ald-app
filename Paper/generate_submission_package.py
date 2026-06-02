@@ -1193,6 +1193,30 @@ for ref in [
     rp.paragraph_format.left_indent = Cm(0.5)
     r = rp.add_run(ref); sf(r, size=9)
 
+# ── Declarations ─────────────────────────────────────────────────────────────
+h(doc, 'Declarations')
+bp(doc, 'Funding',
+    'This research received no specific grant from any funding agency in the '
+    'public, commercial, or not-for-profit sectors.')
+bp(doc, 'Competing interests',
+    'The author declares no competing financial or non-financial interests.')
+bp(doc, 'Author contributions',
+    'A.R. conceived the research, designed the dual-track framework (PCGM and VICES), '
+    'implemented the Constructive Solid Geometry (CSG) pipeline, Graph Neural Network '
+    '(GNN) surrogate, physics guardrail engine, and Genetic Algorithm (GA) optimiser, '
+    'generated and processed all 123 OpenFOAM reactingFoam simulations, '
+    'analysed the results, prepared all figures, and wrote the manuscript.')
+bp(doc, 'Data availability',
+    'The CFD simulation cases were generated using the open-source OpenFOAM '
+    'reactingFoam solver (opencfd/openfoam-default, v2512). All 123 processed '
+    'simulation cases (HDF5 format) and trained model checkpoints are available '
+    'from the corresponding author on reasonable request.')
+bp(doc, 'Code availability',
+    'The framework implementation — including the PCGM geometry generator, VICES '
+    'Constructive Solid Geometry pipeline, MultiHead MeshGraphNet surrogate, '
+    'physics guardrail engine, Genetic Algorithm optimiser, and Streamlit dashboard '
+    '— is available from the corresponding author on reasonable request.')
+
 doc.save(str(PAPER_DIR / 'CFD_ALD_Paper_CEJ.docx'))
 print('  ✓ CFD_ALD_Paper_CEJ.docx')
 
