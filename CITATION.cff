@@ -1,0 +1,49 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+type: software
+title: "A Physics-Guardrailed Dual-Track Surrogate Framework for ALD Showerhead Geometry Optimisation"
+abstract: >
+  A machine learning surrogate framework for Atomic Layer Deposition (ALD)
+  showerhead geometry optimisation using two parallel geometry tracks:
+  Track 1 (PCGM — Physics-Constrained Geometric Morphogenesis) for parametric
+  search, and Track 2 (VICES — Voxel-Implicit Computational Engineering Synthesis)
+  for topology-level geometry synthesis via Constructive Solid Geometry (CSG).
+  Includes a Graph Neural Network surrogate, an eleven-parameter two-tier physics
+  guardrail engine, and a Genetic Algorithm optimiser. Demonstrates +183% TMA
+  uniformity improvement over parametric methods through topology-aware search.
+authors:
+  - given-names: Amit
+    family-names: Rana
+    email: amit21aim@gmail.com
+    orcid: "https://orcid.org/0009-0008-5998-6560"
+keywords:
+  - Atomic Layer Deposition
+  - Graph Neural Network
+  - Constructive Solid Geometry
+  - Signed Distance Field
+  - Marching Cubes
+  - Catalan numbers
+  - Physics guardrails
+  - Showerhead optimisation
+  - OpenFOAM
+  - Genetic Algorithm
+  - Topology-aware search
+  - Surrogate model
+license: MIT
+version: "1.0.0"
+date-released: "2026-06-01"
+repository-code: "https://github.com/Ranaam21/cfd-ald-app"
+preferred-citation:
+  type: article
+  title: >
+    A Physics-Guardrailed Dual-Track Surrogate Framework for Atomic Layer
+    Deposition Showerhead Geometry Optimisation: Parametric Morphogenesis
+    and Voxel-Implicit Constructive Solid Geometry Topology-Aware Search
+  authors:
+    - given-names: Amit
+      family-names: Rana
+      email: amit21aim@gmail.com
+      orcid: "https://orcid.org/0009-0008-5998-6560"
+  journal: "Chemical Engineering Journal"
+  year: 2026
+  status: submitted
