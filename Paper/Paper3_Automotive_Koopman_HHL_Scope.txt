@@ -1,0 +1,333 @@
+================================================================================
+PAPER 3 — RESEARCH SCOPE DOCUMENT
+Topology-Aware Automotive Aerodynamic Optimisation via CSG Synthesis,
+Koopman Linearisation, and Quantum-Accelerated HHL Simulation
+================================================================================
+Author: Amit Rana
+Date: Jun 2026
+Status: Pre-research scoping — for personal review before plan finalisation
+
+--------------------------------------------------------------------------------
+1. ONE-LINE SUMMARY
+--------------------------------------------------------------------------------
+Combine Track 2 VICES (CSG topology synthesis) with Koopman operator theory
+and the HHL quantum algorithm to discover aerodynamically optimal car body
+geometries — evaluating 1,000 candidate shapes in the time classical CFD
+evaluates one.
+
+--------------------------------------------------------------------------------
+2. THE CORE ARGUMENT
+--------------------------------------------------------------------------------
+Problem:
+  - Automotive aerodynamic design is constrained by parametric tools (vary
+    spoiler angle, hood curvature etc.) — same topology family every time
+  - Each CFD evaluation: 6-48 hours on HPC clusters
+  - Industry typically evaluates 10-50 designs per development cycle
+
+What this paper does:
+  Step 1 — VICES generates novel car body topologies using CSG boolean ops
+            on SDF primitives (body shell, underbody, A/B/C-pillars, diffuser,
+            spoiler as separate primitives combined with Union/Subtract)
+
+  Step 2 — Koopman operator lifts the nonlinear Navier-Stokes equations around
+            each candidate shape into a linear system Ax = b
+            (using Dynamic Mode Decomposition / EDMD from flow snapshots)
+
+  Step 3 — HHL algorithm solves Ax = b in O(log N) quantum operations
+            vs O(N) classical — exponential speedup for well-conditioned systems
+
+  Step 4 — Drag coefficient (Cd) and lift-to-drag ratio (L/D) predicted for
+            each candidate in seconds vs hours
+
+  Step 5 — Genetic Algorithm (reuse from Paper 1) searches over topology space
+            guided by surrogate Cd predictions
+
+Result:
+  - Topologically diverse car shapes discovered that parametric tools miss
+  - Quantum speedup demonstrated and quantified
+  - Best designs validated against full DrivAerNet CFD ground truth
+
+Usability statement:
+  "A 1% reduction in drag coefficient saves approximately $1 billion annually
+  in global automotive fuel costs. Our framework evaluates 1,000 candidate
+  topologies in the time classical CFD evaluates one, making topology-level
+  aerodynamic design search practical for the first time."
+
+--------------------------------------------------------------------------------
+3. DATASET — DrivAerNet++ (PRIMARY)
+--------------------------------------------------------------------------------
+Name:        DrivAerNet++ (upgraded from DrivAerNet)
+Institution: MIT (Massachusetts Institute of Technology)
+Access:      Publicly available — no registration required
+Link:        https://github.com/Mehtab08/DrivAerNet (original)
+             https://www.aicrowd.com/challenges/drivaernet (challenge version)
+Size:        4,000 car body geometries (DrivAerNet++ extended version)
+             8,000 CFD simulations (2 Reynolds number conditions per shape)
+Format:      STL geometry files + OpenFOAM RANS results (VTK/HDF5)
+Fields:      Velocity (Ux, Uy, Uz), pressure (p), turbulent viscosity (nut)
+Reynolds:    Re ~ 3-5 million (highway driving, 120 km/h)
+Turbulence:  k-omega SST (same as your ALD cases — familiar setup)
+Target:      Drag coefficient (Cd), lift coefficient (Cl)
+
+Why DrivAerNet++ suffices for ALL paper needs:
+  a) Geometry diversity: 4,000 shapes cover parametric variations of a
+     realistic fastback/notchback/estate car body — good Koopman training data
+  b) Time-series data: OpenFOAM RANS writes intermediate time steps —
+     these snapshots are the INPUT to DMD/Koopman eigenfunction extraction
+  c) Ground truth Cd/Cl for every shape — validates surrogate predictions
+  d) STL files directly usable with your existing snappyHexMesh pipeline
+  e) Same OpenFOAM solver as Paper 1 — no new infrastructure needed
+  f) Public, MIT-released, zero COI
+
+Supplementary dataset (optional, for Koopman validation only):
+  Name:   Ahmed body wake (classic bluff body aerodynamics)
+  Why:    Simple geometry, well-studied Koopman eigenfunctions in literature
+  Access: Generate with OpenFOAM in ~30 min (standard tutorial geometry)
+  Use:    Validate Koopman implementation before applying to full car shapes
+
+--------------------------------------------------------------------------------
+4. TECHNICAL COMPONENTS — WHAT NEEDS TO BE BUILT
+--------------------------------------------------------------------------------
+
+4.1 VICES Automotive Geometry Module
+  - Reuse geometry/vices/ from Paper 1 (already built)
+  - Add automotive primitives:
+      * CarBody: large box/ellipsoid for main body shell
+      * Underbody: box subtracted from bottom
+      * Windscreen: angled plane intersection
+      * Spoiler: small box/wedge added at rear
+      * Diffuser: angled cone at underbody rear
+  - CSG tree: Union(body, spoiler) - Subtract(underbody) - Subtract(wheel_arches)
+  - Catalan characterisation: same formalism as Paper 1, new domain
+  - Output: STL for snappyHexMesh (same pipeline as Paper 1)
+
+4.2 Koopman Operator Implementation
+  - Method: EDMD (Extended Dynamic Mode Decomposition)
+  - Input: N time snapshots of velocity field [u(t1), u(t2), ..., u(tN)]
+  - Output: Koopman eigenfunctions phi_i, eigenvalues lambda_i
+  - Library: PyDMD (open-source Python DMD library, pip install pydmd)
+  - Validation: Ahmed body wake — compare Koopman modes vs published literature
+  - Key check: eigenvalues should be near unit circle for periodic/quasi-periodic flow
+
+  Mathematical form:
+    K * phi(x) = lambda * phi(x)
+    where K is the Koopman operator, phi are observable functions
+    EDMD approximates K from data: K_approx = Psi_Y * Psi_X^+
+    (Psi_X, Psi_Y are data matrices of observables at consecutive snapshots)
+
+4.3 Linear System Construction (Ax = b)
+  - After Koopman: flow evolution becomes A*x_t = x_{t+1} (linear!)
+  - A is the Koopman matrix (sparse for well-chosen observables)
+  - Condition number kappa(A) is critical for HHL speedup:
+      * kappa << 1000: HHL gives real speedup
+      * kappa >> 1000: speedup reduced or lost
+  - For laminar wake flows: kappa typically 10-100 (excellent for HHL)
+  - For turbulent RANS: kappa may be higher — test and report honestly
+
+4.4 HHL Algorithm Implementation
+  - Use classical simulation of HHL (no quantum hardware needed)
+  - Library options:
+      * Qiskit (IBM, open source): has HHL implementation
+      * PennyLane (already in your gesture paper references [7])
+      * Custom numpy implementation for small systems
+  - Demonstrate: HHL solves the Koopman linear system
+  - Report: theoretical speedup O(kappa^2 * log(N)) vs classical O(N^3)
+  - Honest caveat: classical simulation of HHL is not faster than classical
+    solvers — the speedup is theoretical/projected for fault-tolerant QC
+
+4.5 Surrogate Model (reuse from Paper 1)
+  - Reuse MultiHeadMGN architecture (already built and trained)
+  - Retrain on DrivAerNet++ point clouds for Cd/Cl prediction
+  - Input: car body point cloud [N, 3] + global features (Re, geometry ratios)
+  - Output: Cd (drag), Cl (lift), surface pressure field
+
+4.6 Genetic Algorithm Optimizer (reuse from Paper 1)
+  - Reuse track2_ga_optimizer.py (already built)
+  - Chromosome: [topology_type, body_length, width, height, spoiler_angle,
+                  diffuser_angle, extra_param]
+  - Fitness: predicted Cd (minimise drag) and L/D ratio (maximise)
+  - Compare: GA topology search vs parametric DrivAerNet best shapes
+
+--------------------------------------------------------------------------------
+5. PAPER STRUCTURE (PROPOSED)
+--------------------------------------------------------------------------------
+
+Section 1 — Introduction
+  - Automotive aerodynamics bottleneck: classical CFD cost
+  - Topology gap: why parametric tools miss optimal shapes
+  - Three contributions: VICES automotive + Koopman + HHL
+
+Section 2 — Background
+  2.1 DrivAerNet and automotive CFD surrogates
+  2.2 Koopman operator theory and DMD
+  2.3 HHL algorithm and quantum linear systems
+  2.4 Comparison to PINN approaches (reuse framing from Paper 1)
+
+Section 3 — Automotive VICES Geometry Module
+  - CSG tree for car body synthesis
+  - Catalan number design space (same formalism, new domain)
+  - Marching Cubes to STL
+
+Section 4 — Koopman Linearisation of Automotive Flow
+  - EDMD from DrivAerNet time snapshots
+  - Eigenfunction analysis (dominant flow modes)
+  - Linear system Ax = b construction
+  - Condition number analysis
+
+Section 5 — HHL Quantum Acceleration
+  - Classical simulation of HHL on Koopman linear system
+  - Theoretical speedup quantification
+  - Honest limitations (NISQ era constraints)
+
+Section 6 — Surrogate and GA Optimizer
+  - GNN retrained on DrivAerNet
+  - GA topology search results
+  - Best Cd designs vs DrivAerNet parametric best
+
+Section 7 — Results
+  - Koopman mode visualisations
+  - HHL speedup analysis
+  - Cd improvement from topology search
+  - Comparison: parametric vs topology-aware designs
+
+Section 8 — Industry Use Cases
+  - EV range extension
+  - Motorsport (F1, Le Mans)
+  - Heavy trucks (fuel efficiency regulation)
+  - Urban delivery vehicles
+
+Section 9 — Conclusion
+  - Topology gap confirmed in automotive domain
+  - Koopman-HHL bridge to quantum CFD
+  - Path to fault-tolerant quantum aerodynamic design
+
+--------------------------------------------------------------------------------
+6. NOVELTY CLAIMS
+--------------------------------------------------------------------------------
+
+Primary (strongest):
+  1. First application of CSG Catalan topology search to automotive
+     aerodynamic design — demonstrating topology gap in a new domain
+  2. First Koopman-HHL pipeline validated on automotive CFD data
+     (DrivAerNet++ provides the ground truth)
+
+Secondary:
+  3. Cross-domain transfer of VICES framework (ALD → automotive)
+     demonstrates generality of the geometric synthesis approach
+  4. Bridges Paper 1 (CFD geometric synthesis) and QuantumRAG
+     (Hilbert space, quantum algorithms) in a single framework
+
+What this is NOT:
+  - Not a PINN paper (we don't learn to solve PDEs)
+  - Not a DrivAerNet accuracy paper (we don't try to beat their Cd predictions)
+  - Not a quantum hardware paper (we simulate HHL classically)
+
+--------------------------------------------------------------------------------
+7. TARGET JOURNAL
+--------------------------------------------------------------------------------
+
+Primary:   npj Computational Materials (Springer Nature)
+           IF 9.4 | Open access | Fast review (~6-8 weeks)
+           Reason: accepts ML + computational methods for materials/engineering
+           Note: APC applies — check if waiver available as independent researcher
+
+Backup 1:  Aerospace Science and Technology (Elsevier)
+           IF 5.6 | Free to publish | Aerospace + computational methods
+
+Backup 2:  Computers & Fluids (Elsevier)
+           IF 2.8 | Free to publish | CFD + ML methods
+
+Backup 3:  npj Quantum Information (Springer Nature)
+           IF 6.6 | If quantum contribution is emphasised more than CFD
+
+--------------------------------------------------------------------------------
+8. WHAT YOU ALREADY HAVE (REUSABLE FROM PAPER 1)
+--------------------------------------------------------------------------------
+Component                          Status
+---------                          ------
+VICES CSG/SDF pipeline             DONE — geometry/vices/
+Marching Cubes triangulation       DONE — PyMCubes
+Region tagger (wall/inlet/wafer)   DONE — needs adaptation for car geometry
+MultiHeadMGN architecture          DONE — needs retraining on DrivAerNet
+Genetic Algorithm optimizer        DONE — track2_ga_optimizer.py
+Physics guardrail engine           DONE — can adapt for aerodynamics (Re, Ma, Eu)
+OpenFOAM Docker pipeline           DONE — same Docker image works
+Streamlit dashboard                DONE — add aerodynamics tab
+
+New components needed:
+Component                          Effort
+---------                          ------
+Automotive CSG primitives          2-3 days
+Koopman/EDMD implementation        1 week (PyDMD library)
+HHL simulation (Qiskit/PennyLane)  1 week
+GNN retraining on DrivAerNet       1 day (Colab A100)
+
+--------------------------------------------------------------------------------
+9. ESTIMATED TIMELINE
+--------------------------------------------------------------------------------
+Week 1-2:   Download DrivAerNet++, set up data pipeline, retrain GNN
+Week 3-4:   Build automotive VICES primitives, generate test shapes
+Week 5-6:   Implement Koopman/EDMD on DrivAerNet time snapshots
+Week 7-8:   Implement HHL simulation (Qiskit), validate on Ahmed body
+Week 9-10:  Run GA topology search, collect results
+Week 11-12: Write paper, generate figures
+Week 13:    Submit
+
+Total: ~3 months part-time
+
+--------------------------------------------------------------------------------
+10. KEY QUESTIONS TO RESOLVE BEFORE STARTING
+--------------------------------------------------------------------------------
+Q1: Is DrivAerNet++ time-series data available?
+    (EDMD needs multiple snapshots, not just steady-state)
+    → Check: does DrivAerNet provide transient/unsteady data or only RANS steady?
+    → If only steady: use OpenFOAM to generate your own transient Ahmed body data
+
+Q2: What is the condition number of Koopman matrix for RANS flows?
+    → If kappa >> 1000, HHL speedup is marginal — need to address honestly
+    → Mitigation: use laminar wake (Re=100 cylinder) as the HHL validation case
+      and DrivAerNet for the surrogate/topology search part separately
+
+Q3: Does PennyLane (already in your gesture paper) have HHL?
+    → Check: pennylane.ai/qml/demonstrations
+    → If yes: saves setup time and connects to your gesture paper
+
+Q4: COI check
+    → Applied Materials does NOT make cars — zero COI on this paper
+    → NASA/MIT/Johns Hopkins data — zero COI
+
+--------------------------------------------------------------------------------
+11. DATASETS DOWNLOAD LINKS
+--------------------------------------------------------------------------------
+DrivAerNet (original):     https://github.com/Mehtab08/DrivAerNet
+DrivAerNet++ (extended):   https://www.aicrowd.com/challenges/drivaernet
+AirfRANS:                  https://github.com/Aero-DL/AirfRANS
+JHTDB:                     https://turbulence.pha.jhu.edu
+PyDMD library:             https://github.com/PyDMD/PyDMD
+Qiskit HHL:                https://qiskit.org/documentation/tutorials/algorithms/09_HHL_algorithm.html
+PennyLane:                 https://pennylane.ai
+
+--------------------------------------------------------------------------------
+12. NOTES FOR SELF
+--------------------------------------------------------------------------------
+- The topology gap argument (Catalan numbers) is the thread connecting
+  Paper 1 (ALD) and Paper 3 (automotive) — same mathematical framework,
+  two completely different engineering domains. This cross-domain
+  demonstration strengthens the generality claim of the VICES approach.
+
+- The Koopman-HHL component bridges QuantumRAG (Hilbert space) with
+  CFD (Paper 1). The three papers together form a coherent research arc:
+  quantum retrieval → quantum-accelerated simulation → quantum-guided design.
+
+- Do NOT overclaim the quantum speedup. HHL is theoretically exponential
+  but practically limited by read-out cost and hardware constraints.
+  Frame it as "quantum-ready" pipeline: the architecture is designed for
+  fault-tolerant QC when it arrives, demonstrated classically today.
+
+- Be honest about DrivAerNet data: if only steady-state RANS is available,
+  Koopman from snapshots needs the transient OpenFOAM runs separately.
+  This is not a blocker — just be explicit about data sources.
+
+================================================================================
+END OF SCOPE DOCUMENT
+================================================================================
