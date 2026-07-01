@@ -1,4 +1,4 @@
-================================================================================
+				================================================================================
 PAPER 3 — RESEARCH SCOPE DOCUMENT
 Topology-Aware Automotive Aerodynamic Optimisation via CSG Synthesis,
 Koopman Linearisation, and Quantum-Accelerated HHL Simulation

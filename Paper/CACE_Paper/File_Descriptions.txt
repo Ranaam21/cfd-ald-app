@@ -1,0 +1,67 @@
+CACE SUBMISSION — FILE DESCRIPTIONS FOR ELSEVIER "ATTACH FILES" PORTAL
+======================================================================
+Manuscript: Atomic Layer Deposition Showerhead Geometry Optimisation via a
+Physics-Guardrailed Dual-Track Surrogate Framework: Parametric and
+Topology-Variable CSG Search
+Journal: Computers & Chemical Engineering
+
+Use the File Type and Description below when uploading each file.
+----------------------------------------------------------------------
+
+FILE 1
+  Filename   : CFD_ALD_Paper_CACE.docx
+  File Type  : Manuscript
+  Description: Main manuscript (text, tables, and embedded references).
+               Includes Tables 1-3 and all in-line figure callouts.
+
+FILE 2
+  Filename   : Cover_Letter_CACE.docx
+  File Type  : Cover Letter
+  Description: Cover letter addressed to the Editor-in-Chief of Computers
+               & Chemical Engineering, describing the paper's scope and fit.
+
+FILE 3
+  Filename   : Highlights_CACE.docx
+  File Type  : Highlights
+  Description: Five research highlights, each ≤85 characters, summarising
+               the key contributions of the manuscript.
+
+FILE 4
+  Filename   : Figure1_Architecture.png
+  File Type  : Figure
+  Description: Figure 1 — Dual-track ALD showerhead design framework
+               architecture diagram showing the shared physics backbone
+               (GNN surrogate, guardrail engine, optimizer) and the two
+               geometry tracks (PCGM parametric; VICES CSG topology).
+               300 DPI, 2501×1961 px.
+
+FILE 5
+  Filename   : Figure2_GA_Comparison.png
+  File Type  : Figure
+  Description: Figure 2 — Genetic algorithm vs. random search comparison
+               for Track 2 (VICES) optimisation: convergence curve, Pareto
+               front, and best TMA uniformity index per geometry type.
+               300 DPI, 2384×740 px.
+
+FILE 6
+  Filename   : Figure3_Pareto_Parity.png
+  File Type  : Figure
+  Description: Figure 3 — Track 1 vs. Track 2 design space exploration
+               (left: Pareto front comparison) and combined KPI surrogate
+               parity plot with R²/Spearman metrics (right).
+               300 DPI, 2084×740 px.
+
+FILE 7
+  Filename   : Figure4_Loss_Curves.png
+  File Type  : Figure
+  Description: Figure 4 — Multi-head GNN training and validation loss
+               curves (total loss and per-head: flow, heat, species) over
+               200 epochs on 123 combined CFD cases.
+               300 DPI, 1800×600 px.
+
+----------------------------------------------------------------------
+NOTES FOR SUBMISSION
+- Tables are embedded inside CFD_ALD_Paper_CACE.docx (no separate upload needed).
+- No supplementary material. Code and CFD case data available on request.
+- Select "No" for open access (standard subscription submission, no APC).
+----------------------------------------------------------------------

@@ -1,0 +1,273 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2869
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\margl1440\margr1440\vieww29700\viewh17920\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 Plan: Geometry-Aware Koopman + HHL Pipeline for Rapid Automotive Aerodynamic\
+Analysis\
+Objective\
+\uc0\u61623  Accelerate aerodynamic shape evaluation by combining geometry-aware flow\
+modeling with Koopman operator linearization and a quantum-inspired solver\
+(HHL). The goal is to screen hundreds to thousands of candidate car designs in the\
+time it normally takes to simulate one, identifying optimal body shapes dramatically\
+faster. [Paper3_Aut..._HHL_Scope | Txt]\
+Problem Statement\
+\uc0\u61623  Traditional approach bottlenecks: Current automotive CFD design is limited by\
+parametric geometries and expensive simulations. Only ~10\'9650 designs can be\
+tested per cycle due to HPC run times (hours per design), meaning many promising\
+topologies are never explored. The result: suboptimal designs and missed\
+opportunities for drag reduction. [Paper3_Aut..._HHL_Scope | Txt]\
+Dataset Integration Strategy (Steady + Transient)\
+\uc0\u61623  Primary Dataset (Steady-State): DrivAerNet++ \'96 a published large-scale car\
+aerodynamics dataset (~4,000 3D car shapes and ~8,000 RANS simulations) provides\
+geometry diversity and steady-state CFD results (velocity &amp; pressure fields) for each\
+shape. All cases share highway conditions (Re ~3\'965\'d710^6, incompressible flow) and\
+known outputs (drag Cd, lift Cl) for validation. [Paper3_Aut..._HHL_Scope | Txt]\
+\uc0\u61623  Supplementary Dataset (Transient): Ahmed body wake (and/or similar canonical\
+unsteady flows) \'96 a simple bluff-body case with well-known vortex shedding\
+behavior. This small transient CFD dataset (e.g. from an OpenFOAM simulation or\
+literature) provides time-resolved snapshots to train the Koopman operator (e.g.\
+capturing a Von K\'e1rm\'e1n vortex street pattern). It serves to validate and tune the\
+EDMD/Koopman implementation before applying it to full car shapes.\
+[Paper3_Aut..._HHL_Scope | Txt]\
+\uc0\u61623  Normalization &amp; Alignment: All data are made dimensionless and scaled\
+consistently. Using the same reference velocity, length (e.g. vehicle length or wake\
+cylinder diameter), and fluid properties ensures Reynolds number and other\
+nondimensional parameters align across datasets. This allows fusing steady and\
+unsteady data: steady RANS fields supply a broad range of geometries, and transient\
+flows supply dynamic modes. Pre-validation is performed by checking known metrics\
+(e.g. baseline Cd of DrivAer, Strouhal frequency for Ahmed) to ensure the combined\
+dataset is physically consistent and accurate.\
+End-to-End Methodology &amp; Pipeline\
+\uc0\u61623  Overview: The pipeline transforms high-fidelity nonlinear CFD into a reduced linear\
+form solvable in (simulated) quantum speed, then predicts aerodynamic metrics for\
+rapid design iteration. Key stages:\
+\uc0\u61623  Geometry Representation: Topology-aware geometry handling uses Constructive\
+Solid Geometry (CSG) primitives (body shell, spoiler, diffuser, etc.) to parameterize car\
+shapes. This ensures a consistent representation across designs and aids applying\
+physics constraints (e.g. realistic dimensions and smoothness). The output\
+geometries (STL meshes) feed a meshing and simulation pipeline (OpenFOAM RANS,\
+which is reused from prior work) to produce flow fields. [Paper3_Aut..._HHL_Scope |\
+Txt], [Paper3_Aut..._HHL_Scope | Txt] [Paper3_Aut..._HHL_Scope | Txt]\
+\uc0\u61623  Koopman/Strouhal Analysis: For representative shapes (or the canonical bluff body),\
+gather time-series flow snapshots and apply Extended Dynamic Mode\
+Decomposition (EDMD) to approximate the Koopman operator. This yields\
+\
+eigenfunctions and eigenvalues describing the flow\'92s dominant modes. In practice, it\
+identifies key unsteady phenomena (e.g. vortex shedding behind blunt bodies) by\
+computing their frequency (Strouhal number) and spatial mode shapes. For example,\
+a stable St (\uc0\u8776 0.2) indicates a classic von K\'e1rm\'e1n vortex street pattern in the wake.\
+These insights confirm the periodic structures are captured correctly.\
+[Paper3_Aut..._HHL_Scope | Txt] [Paper3_Aut..._HHL_Scope | Txt], [en.wikipedia.org]\
+[blog.trueg...ometry.com]\
+\uc0\u61623  Linear System Lifting: The EDMD step produces a linear state-transition model of\
+the flow: x_\{t+1\} \uc0\u8776  A\'b7x_t. This Koopman matrix A (usually high-dimensional but often\
+sparse) linearly propagates the flow state in a lifted space. The b vector (right-hand\
+side) represents the flow state at the next time step; effectively we have A x = b as a\
+linear system approximating Navier\'96Stokes. The condition number \uc0\u954  of A is assessed\
+\'96 if moderate (\uc0\u954  ~ 10\'96100 for laminar/periodic flows), it\'92s suitable for quantum solving; if\
+extremely high (turbulent flows), note in limitations. [Paper3_Aut..._HHL_Scope | Txt]\
+\uc0\u61623  HHL Solver Application: Use a Quantum-inspired solver (Harrow-Hassidim-Lloyd\
+algorithm) to solve A\'b7x = b for x (flow field solution) rapidly. Here HHL is run in classical\
+simulation mode via libraries like Qiskit or PennyLane. Conceptually, HHL provides an\
+exponential speedup (solving in O(log N) time steps) under ideal conditions \'96 enabling\
+near real-time resolution of the linear flow equations. In practice, this stage checks that\
+the solution for x (which encodes velocity/pressure field or derived aerodynamic forces)\
+can be obtained much faster than traditional linear algebra solvers, albeit the actual\
+hardware speedup is conceptual. [Paper3_Aut..._HHL_Scope | Txt]\
+\uc0\u61623  Aerodynamic Outputs: From the solved flow state (via HHL), compute target\
+aerodynamic metrics, primarily drag (Cd) and lift (Cl) coefficients, and possibly flow\
+rates or pressure field as needed. Because the flow is solved in near real-time after\
+the Koopman transform, Cd and Cl can be estimated for each candidate shape within\
+seconds. This unlocks fast design iteration (e.g. coupling with an optimization loop\
+such as a genetic algorithm, though that is outside this summary\'92s scope). All computed\
+results are later compared with ground-truth CFD for validation.\
+[Paper3_Aut..._HHL_Scope | Txt]\
+Physics Constraints &amp; Enforcement\
+\uc0\u61623  Consistent Flow Regime: All simulations and data adhere to incompressible, high-\
+Reynolds-number conditions consistent with automotive aerodynamics (e.g. Re\
+~10^6; Mach ~0.1 so compressibility negligible). Turbulence model is fixed (k\'96\uc0\u969  SST\
+RANS) across both steady and transient data to ensure apples-to-apples physics. This\
+uniform baseline (same Re, Prandtl number ~0.7 (air), etc.) ensures the learned\
+Koopman linearization and subsequent solution remain physically valid for the\
+intended regime. [Paper3_Aut..._HHL_Scope | Txt]\
+\uc0\u61623  Boundary Conditions &amp; Constraints: Each geometry\'92s CFD simulation uses the\
+same boundary conditions (uniform inlet velocity, no-slip walls, etc.) to avoid spurious\
+differences. A physics guardrail system (adapted from previous work) monitors\
+conditions like Re, Mach, geometric validity, ensuring no shape violates the\
+assumptions (e.g. extremely large aspect ratios or flow regimes outside training data).\
+These constraints are applied at the design generation stage and in any surrogate\
+model predictions to maintain physical realism. [Paper3_Aut..._HHL_Scope | Txt]\
+Validation Strategy &amp; Limitations\
+\uc0\u61623  Ground-Truth Comparison: For validation, compare pipeline predictions against\
+actual CFD results. For a subset of designs (from DrivAerNet++), predict Cd and Cl via\
+the Koopman-HHL pipeline and compare to the dataset\'92s ground-truth values. Ensure\
+\
+error margins are acceptable. Similarly, confirm the Koopman modes for the Ahmed\
+body match published results (e.g. known Strouhal frequency, wake mode shape),\
+establishing confidence in the method. [Paper3_Aut..._HHL_Scope | Txt]\
+\uc0\u61623  Hybrid Data Approach: Recognize the plan uses steady-state and transient data\
+differently \'96 steady RANS data trains the geometry\'96performance surrogate, whereas\
+transient snapshots train the Koopman model. This separation means unsteady flow\
+patterns are learned from simplified cases and assumed to generalize to full car\
+shapes (limitation to be acknowledged). If DrivAerNet++ lacks time-resolved data,\
+ensure the additional transient simulations (Ahmed/cylinder flow) sufficiently capture the\
+dominant unsteady phenomena relevant to vehicle aerodynamics.\
+[Paper3_Aut..._HHL_Scope | Txt]\
+\uc0\u61623  HHL Realism &amp; Conditioning: Note that HHL speedup is theoretical in our classical\
+simulation context \'96 the pipeline is \'93quantum-ready\'94 rather than delivering immediate\
+runtime gains. We emphasize the feasibility and scaling of the approach on future\
+quantum hardware. Meanwhile, carefully assess the matrix condition number (\uc0\u954 ): if \u954 \
+is too high (&gt;&gt;1000, as might occur in complex turbulent flows), the HHL algorithm\'92s\
+advantage diminishes. In the report, we will honestly discuss this and possibly\
+demonstrate HHL on a well-conditioned case (e.g. laminar cylinder flow) to illustrate the\
+potential speedup. [Paper3_Aut..._HHL_Scope | Txt]\
+\uc0\u61623  Output &amp; Readout Limitations: Acknowledge that even if HHL can solve A x = b,\
+reading out full flow fields from a quantum state can be costly, potentially offsetting\
+some speedup in practice. We will mitigate overclaiming by focusing on aerodynamic\
+metrics output directly (like Cd, Cl, which can be crafted as observables in the\
+simulation to extract with fewer measurements). All limitations and assumptions (steady\
+vs transient mixing, classical HHL simulation, etc.) will be clearly stated in the final\
+deliverables to maintain scientific honesty. [Paper3_Aut..._HHL_Scope | Txt]\
+End State &amp; Deliverables\
+\uc0\u61623  Completed Pipeline &amp; Demonstration: The outcome is an integrated pipeline\
+(geometry generation + Koopman + HHL + aerodynamics computation) that is tested\
+and validated. It will demonstrate evaluating ~1,000 design variants on a laptop-\
+scale simulation in the time one high-fidelity CFD run would normally take, illustrating a\
+~10\'96100\'d7 speedup in design exploration. [Paper3_Aut..._HHL_Scope | Txt],\
+[Paper3_Aut..._HHL_Scope | Txt]\
+\uc0\u61623  Executive Outputs: Deliverables include a concise research report (targeting journals\
+like npj Computational Materials) documenting the objective, methodology, and results.\
+This report will feature key findings: e.g., confirmation of the \'93topology gap\'94 (novel\
+shapes found that parametric design missed), quantum-simulation time\
+improvements, and Cd reduction achieved on best discovered shape(s). Additionally,\
+all supporting components (CSG geometry module, EDMD implementation, HHL solver\
+scripts, etc.) will be fully developed and integrated, ready for potential publication and\
+further experimental use. The end state is a proven, physics-constrained \'93Koopman +\
+quantum solve\'94 workflow that bridges classical CFD and quantum computing\
+techniques for a new level of speed and scale in aerodynamic design optimization.\
+[Paper3_Aut..._HHL_Scope | Txt] [Paper3_Aut..._HHL_Scope | Txt],\
+[Paper3_Aut..._HHL_Scope | Txt]\
+Sources\
+Convert to\
+Word\
+\
+PDF\
+Infographic\
+Provide your feedback on BizChat\
+You said:\
+do you think it is novel and ground breaking\
+Researcher said:\
+Researcher\
+Reasoning completed in 48 steps\
+Novelty &amp; Significance of the Proposed CFD\'96Koopman\'96HHL Pipeline\
+Overview: The proposed pipeline integrates geometry-aware design innovation with\
+advanced physics modeling. It couples generative car-body design via constructive solid\
+geometry (CSG), a Koopman operator (DMD/EDMD) flow linearization, and a quantum-\
+inspired solver (HHL). We assess its novelty against existing work in four key areas: (a)\
+automotive CFD surrogates, (b) Koopman/DMD for aerodynamics, (c) quantum linear solvers\
+for CFD, and (d) steady\'96transient data fusion.\
+(a) Automotive CFD Surrogates: Novelty vs Prior Work\
+\uc0\u61623  **Prior Art: Data-driven aerodynamic surrogates are well-established. For instance, the\
+DrivAerNet and DrivAerNet++ projects (MIT, 2024\'9625) provide thousands of\
+parameterized car shapes with CFD-derived drag and lift (fastback, notchback, etc.) for\
+training ML predictive models. Additionally, generative and surrogate modeling\
+workflows (e.g., MIT\'92s DeCoDe Lab, 2023 study) have explored deep learning to\
+predict car drag for thousands of shapes to guide design. However, these efforts\
+largely remain within parametric or shape database boundaries (e.g., resizing,\
+small variations of existing shapes). [arxiv.org] [decode.mit.edu], [decode.mit.edu]\
+[decode.mit.edu]\
+\uc0\u61623  **Proposed Pipeline\'92s Novelty: Expanding the design search beyond known\
+topologies. The pipeline applies a CSG-based \'93topology search\'94 to create\
+fundamentally new car body shapes beyond the standard parametric design space. This\
+approach addresses the \'93topology gap\'94 \'96 the inability of parametric design to explore\
+radically different geometries. No known prior automotive aerodynamics study has used\
+CSG with a Catalan grammar to generate diverse topologies (adding/subtracting body\
+parts) and then optimize them, making this a first-of-kind integration. The pipeline also\
+reuses an existing graph neural-network surrogate (from prior work, \'93Paper 1\'94, on a\
+different domain) for rapid performance evaluation of thousands of designs. In summary,\
+the synergy of CSG-based shape synthesis plus AI surrogate for aerodynamic\
+performance is a novel step forward. [Paper3_Aut..._HHL_Scope | Txt]\
+(b) Koopman/DMD in Aerodynamic Flow Modeling: Novelty vs Prior Work\
+\uc0\u61623  Prior Art: Dynamic Mode Decomposition (DMD) and its extended Koopman-operator\
+variants are widely used in fluid dynamics research to extract coherent flow structures\
+and oscillation frequencies. For example, Ahani &amp; Uddin (2025) applied DMD to the\
+classic Ahmed body (simplified car shape) at Re ~7.7\'d710^5, isolating wake modes in\
+distinct frequency ranges (Strouhal St \uc0\u8776  0.07 for \'93bubble pumping\'94 and ~0.13\'960.17 for\
+vortex shedding). These analysis-focused studies, however, are typically limited to\
+understanding one fixed geometry\'92s flow behavior, not to rapid evaluation of many\
+design candidates. [mdpi.com] [mdpi.com], [mdpi.com]\
+\uc0\u61623  Proposed Pipeline\'92s Novelty: Using Koopman operator methods as a design\
+surrogate for aerodynamic evaluation in near real-time. The pipeline\'92s EDMD-based\
+Koopman linearization is employed to transform nonlinear aerodynamics around a given\
+\
+shape into a linear system (A\'b7x = b), enabling fast solution. While Koopman/DMD itself\
+is established in aerodynamics research, embedding it into a multi-design\
+optimization loop is new. The pipeline\'92s idea is to leverage DMD/Koopman not just for\
+understanding one flow, but to help accelerate predicting performance (Cd, Cl) for\
+multiple shapes. This is a creative reuse of DMD: from analysis tool to surrogate\
+model mechanism. A key challenge here is ensuring the method works for turbulent\
+automotive flows \'96 which the pipeline plans to address via careful selection of\
+Koopman observables and a validation on simpler flows (e.g., the Ahmed body wake)\
+before scaling up. [Paper3_Aut..._HHL_Scope | Txt], [Paper3_Aut..._HHL_Scope | Txt]\
+(c) Quantum Linear Solvers for CFD: Novelty vs Prior Work\
+\uc0\u61623  Prior Art: The concept of applying Harrow\'96Hassidim\'96Lloyd (HHL) or related quantum\
+linear solvers to fluid simulation has been broached in recent research. Ye et al.\
+(Physics of Fluids, 2024) introduced a hybrid quantum-classical CFD framework,\
+transforming fluid equations into linear systems and solving via HHL and variational\
+quantum linear solvers (VQLS) with promising accuracy (\uc0\u8764 0.1% error) on unsteady\
+cylinder flows and turbulence around an aircraft. Their approach used subspace\
+reduction to handle large linear systems (simulating up to ~9.4 million grid cells) on\
+limited quantum resources. Moreover, companies like Quanscient (2026) have\
+demonstrated a 15-step quantum Lattice Boltzmann simulation with an obstacle on\
+real quantum hardware, heralded as \'93one of the most realistic quantum CFD\
+simulations to date\'94. However, these efforts are at an early conceptual stage \'96\
+quantum speedups in CFD remain theoretical until larger fault-tolerant quantum\
+computers are available. [pubs.aip.org] [thequantum...nsider.com],\
+[thequantum...nsider.com]\
+\uc0\u61623  Proposed Pipeline\'92s Novelty: First integration of a quantum-solver concept into an\
+aerodynamic design pipeline. The novelty here is one of \'93visionary synthesis\'94 rather\
+than immediate technical discovery. No prior system links generative car design\
+with a quantum-ready flow solver, so the pipeline is breaking new ground by\
+presenting CFD\'96quantum integration as a future-ready concept. It is a forward-looking\
+novelty: practically, the pipeline will simulate HHL on classical hardware (to validate\
+correctness and quantify speed-up potential). The results will be framed as \'93quantum-\
+ready\'94 rather than delivering real-time quantum advantage today. This is an unusual but\
+innovative coupling \'96 effectively anticipating quantum computing\'92s maturation by\
+designing a workflow that could exploit it when available. The challenge is to avoid\
+overpromising: HHL\'92s exponential speedup requires well-conditioned matrices (\uc0\u954  &lt;&lt;\
+1000), so for realistic turbulent flows (which might have high \uc0\u954 ) the advantage may be\
+small. Top-tier journals will recognize the bold integration and demonstration of\
+HHL for automotive flows as novel, but they will also expect transparent caveats\
+around the quantum component\'92s practical limits. [Paper3_Aut..._HHL_Scope | Txt]\
+(d) Steady vs Transient Data Fusion: Novelty vs Prior Work\
+\uc0\u61623  Prior Art: Hybridizing different fidelity data for aerodynamic models is an emerging\
+trend. Multi-fidelity surrogate frameworks combine cheaper, lower-fidelity models\
+with expensive high-fidelity simulations to improve predictions under limited data\
+budgets. For example, Yang et al. (2026) developed a multi-fidelity surrogate for UAV\
+aerodynamics that mixes panel-method (fast, low accuracy) with RANS (slow, high\
+accuracy) data via transfer learning. However, these methods primarily merge steady-\
+state data of varying fidelity and seldom (if ever) consider mixing steady vs transient\
+flow datasets in one model. The typical assumption is that training data must be\
+\
+consistently defined (all steady or all unsteady) or physically similar. [mdpi.com],\
+[mdpi.com] [mdpi.com]\
+\uc0\u61623  Proposed Pipeline\'92s Novelty: Combining a broad steady-state dataset with targeted\
+transient data to enhance model fidelity. The pipeline merges DrivAerNet++\'92s steady\
+RANS snapshots (for thousands of shapes) with transient flows (e.g., Ahmed body\
+wakes) to inform the Koopman operator linearization about time-dependent\
+aerodynamics. This strategy is fairly novel: to our knowledge, no published surrogate\
+or reduced-order model explicitly fuses static and dynamic CFD data in this manner. In\
+practice, the pipeline\'92s approach uses transient flows to tune and validate the\
+EDMD/Koopman model (ensuring it captures known vortex-shedding patterns\'97like\
+the Von K\'e1rm\'e1n street and Strouhal ~0.2 in bluff-body flows). Meanwhile, the large\
+steady dataset provides the geometric diversity needed for generalization. This hybrid\
+training approach (steady shapes + unsteady physics) is a creative solution to data\
+limitations (since DrivAerNet++ itself may lack fully time-resolved data). A potential\
+limitation is that RANS \'93snapshots\'94 are not true unsteady flows\'97so to apply EDMD\
+meaningfully, the team may need to generate unsteady CFD for a subset of designs\
+(increasing cost). Nevertheless, the concept of injecting real transient physics into a\
+design surrogate adds a physics-grounded layer that sets this pipeline apart from\
+purely data-driven surrogates.}

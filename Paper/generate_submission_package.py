@@ -115,7 +115,7 @@ def generate_architecture_diagram():
 
     plt.tight_layout()
     out = PAPER_DIR / 'fig_architecture.png'
-    plt.savefig(str(out), dpi=180, bbox_inches='tight', facecolor='white')
+    plt.savefig(str(out), dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
     return out
 
