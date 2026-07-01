@@ -1,0 +1,562 @@
+[
+  {
+    "name": "case_0000_D1.0mm_p3.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0000_D1.0mm_p3.0_Q1.0slm_b0.050.h5",
+    "n_cells": 333524,
+    "uniformity_index": 0.48050792641706275
+  },
+  {
+    "name": "case_0001_D1.0mm_p3.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0001_D1.0mm_p3.0_Q2.0slm_b0.050.h5",
+    "n_cells": 333524,
+    "uniformity_index": 0.48014414043442055
+  },
+  {
+    "name": "case_0002_D1.0mm_p3.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0002_D1.0mm_p3.0_Q5.0slm_b0.050.h5",
+    "n_cells": 333524,
+    "uniformity_index": 0.4779332335498554
+  },
+  {
+    "name": "case_0003_D1.0mm_p3.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0003_D1.0mm_p3.0_Q10.0slm_b0.050.h5",
+    "n_cells": 333524,
+    "uniformity_index": 0.4711913491951242
+  },
+  {
+    "name": "case_0004_D1.0mm_p4.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0004_D1.0mm_p4.0_Q1.0slm_b0.050.h5",
+    "n_cells": 342022,
+    "uniformity_index": 0.47926425282677265
+  },
+  {
+    "name": "case_0005_D1.0mm_p4.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0005_D1.0mm_p4.0_Q2.0slm_b0.050.h5",
+    "n_cells": 342022,
+    "uniformity_index": 0.4789295663042624
+  },
+  {
+    "name": "case_0006_D1.0mm_p4.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0006_D1.0mm_p4.0_Q5.0slm_b0.050.h5",
+    "n_cells": 342022,
+    "uniformity_index": 0.47681016843126767
+  },
+  {
+    "name": "case_0007_D1.0mm_p4.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0007_D1.0mm_p4.0_Q10.0slm_b0.050.h5",
+    "n_cells": 342022,
+    "uniformity_index": 0.4702278105338139
+  },
+  {
+    "name": "case_0008_D1.0mm_p5.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0008_D1.0mm_p5.0_Q1.0slm_b0.050.h5",
+    "n_cells": 215843,
+    "uniformity_index": 0.45531795651836504
+  },
+  {
+    "name": "case_0009_D1.0mm_p5.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0009_D1.0mm_p5.0_Q2.0slm_b0.050.h5",
+    "n_cells": 215843,
+    "uniformity_index": 0.45504379695067587
+  },
+  {
+    "name": "case_0010_D1.0mm_p5.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0010_D1.0mm_p5.0_Q5.0slm_b0.050.h5",
+    "n_cells": 215843,
+    "uniformity_index": 0.453094957965093
+  },
+  {
+    "name": "case_0011_D1.0mm_p5.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0011_D1.0mm_p5.0_Q10.0slm_b0.050.h5",
+    "n_cells": 215843,
+    "uniformity_index": 0.4465433622638756
+  },
+  {
+    "name": "case_0012_D1.0mm_p6.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0012_D1.0mm_p6.0_Q1.0slm_b0.050.h5",
+    "n_cells": 159967,
+    "uniformity_index": 0.5008511550489817
+  },
+  {
+    "name": "case_0013_D1.0mm_p6.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0013_D1.0mm_p6.0_Q2.0slm_b0.050.h5",
+    "n_cells": 159967,
+    "uniformity_index": 0.5006454138576379
+  },
+  {
+    "name": "case_0014_D1.0mm_p6.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0014_D1.0mm_p6.0_Q5.0slm_b0.050.h5",
+    "n_cells": 159967,
+    "uniformity_index": 0.4990303263326312
+  },
+  {
+    "name": "case_0015_D1.0mm_p6.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0015_D1.0mm_p6.0_Q10.0slm_b0.050.h5",
+    "n_cells": 159967,
+    "uniformity_index": 0.4932791232256759
+  },
+  {
+    "name": "case_0016_D1.5mm_p3.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0016_D1.5mm_p3.0_Q1.0slm_b0.050.h5",
+    "n_cells": 283017,
+    "uniformity_index": 0.4585462354145001
+  },
+  {
+    "name": "case_0017_D1.5mm_p3.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0017_D1.5mm_p3.0_Q2.0slm_b0.050.h5",
+    "n_cells": 283017,
+    "uniformity_index": 0.45823449750206047
+  },
+  {
+    "name": "case_0018_D1.5mm_p3.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0018_D1.5mm_p3.0_Q5.0slm_b0.050.h5",
+    "n_cells": 283017,
+    "uniformity_index": 0.4561326255663265
+  },
+  {
+    "name": "case_0019_D1.5mm_p3.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0019_D1.5mm_p3.0_Q10.0slm_b0.050.h5",
+    "n_cells": 283017,
+    "uniformity_index": 0.4493378864814548
+  },
+  {
+    "name": "case_0020_D1.5mm_p4.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0020_D1.5mm_p4.0_Q1.0slm_b0.050.h5",
+    "n_cells": 213883,
+    "uniformity_index": 0.4424747568478731
+  },
+  {
+    "name": "case_0021_D1.5mm_p4.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0021_D1.5mm_p4.0_Q2.0slm_b0.050.h5",
+    "n_cells": 213883,
+    "uniformity_index": 0.4421900957049124
+  },
+  {
+    "name": "case_0022_D1.5mm_p4.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0022_D1.5mm_p4.0_Q5.0slm_b0.050.h5",
+    "n_cells": 213883,
+    "uniformity_index": 0.4402144955719238
+  },
+  {
+    "name": "case_0023_D1.5mm_p4.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0023_D1.5mm_p4.0_Q10.0slm_b0.050.h5",
+    "n_cells": 213883,
+    "uniformity_index": 0.4337430044591766
+  },
+  {
+    "name": "case_0024_D1.5mm_p5.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0024_D1.5mm_p5.0_Q1.0slm_b0.050.h5",
+    "n_cells": 169427,
+    "uniformity_index": 0.5322082973163285
+  },
+  {
+    "name": "case_0025_D1.5mm_p5.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0025_D1.5mm_p5.0_Q2.0slm_b0.050.h5",
+    "n_cells": 169427,
+    "uniformity_index": 0.5319854751447212
+  },
+  {
+    "name": "case_0026_D1.5mm_p5.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0026_D1.5mm_p5.0_Q5.0slm_b0.050.h5",
+    "n_cells": 169427,
+    "uniformity_index": 0.5303691467745908
+  },
+  {
+    "name": "case_0027_D1.5mm_p5.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0027_D1.5mm_p5.0_Q10.0slm_b0.050.h5",
+    "n_cells": 169427,
+    "uniformity_index": 0.5242896573048014
+  },
+  {
+    "name": "case_0028_D1.5mm_p6.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0028_D1.5mm_p6.0_Q1.0slm_b0.050.h5",
+    "n_cells": 138095,
+    "uniformity_index": 0.5928297538836459
+  },
+  {
+    "name": "case_0029_D1.5mm_p6.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0029_D1.5mm_p6.0_Q2.0slm_b0.050.h5",
+    "n_cells": 138095,
+    "uniformity_index": 0.5926068333787677
+  },
+  {
+    "name": "case_0030_D1.5mm_p6.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0030_D1.5mm_p6.0_Q5.0slm_b0.050.h5",
+    "n_cells": 138095,
+    "uniformity_index": 0.5911257911460741
+  },
+  {
+    "name": "case_0031_D1.5mm_p6.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0031_D1.5mm_p6.0_Q10.0slm_b0.050.h5",
+    "n_cells": 138095,
+    "uniformity_index": 0.585621855315646
+  },
+  {
+    "name": "case_0032_D2.0mm_p3.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0032_D2.0mm_p3.0_Q1.0slm_b0.050.h5",
+    "n_cells": 257741,
+    "uniformity_index": 0.4501476011664908
+  },
+  {
+    "name": "case_0033_D2.0mm_p3.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0033_D2.0mm_p3.0_Q2.0slm_b0.050.h5",
+    "n_cells": 257741,
+    "uniformity_index": 0.4498403881598291
+  },
+  {
+    "name": "case_0034_D2.0mm_p3.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0034_D2.0mm_p3.0_Q5.0slm_b0.050.h5",
+    "n_cells": 257741,
+    "uniformity_index": 0.4477557751122585
+  },
+  {
+    "name": "case_0035_D2.0mm_p3.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0035_D2.0mm_p3.0_Q10.0slm_b0.050.h5",
+    "n_cells": 257741,
+    "uniformity_index": 0.4410156573790277
+  },
+  {
+    "name": "case_0036_D2.0mm_p4.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0036_D2.0mm_p4.0_Q1.0slm_b0.050.h5",
+    "n_cells": 180767,
+    "uniformity_index": 0.5190989847977323
+  },
+  {
+    "name": "case_0037_D2.0mm_p4.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0037_D2.0mm_p4.0_Q2.0slm_b0.050.h5",
+    "n_cells": 180767,
+    "uniformity_index": 0.518864103079421
+  },
+  {
+    "name": "case_0038_D2.0mm_p4.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0038_D2.0mm_p4.0_Q5.0slm_b0.050.h5",
+    "n_cells": 180767,
+    "uniformity_index": 0.5171724986679223
+  },
+  {
+    "name": "case_0039_D2.0mm_p4.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0039_D2.0mm_p4.0_Q10.0slm_b0.050.h5",
+    "n_cells": 180767,
+    "uniformity_index": 0.5109887170436722
+  },
+  {
+    "name": "case_0040_D2.0mm_p5.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0040_D2.0mm_p5.0_Q1.0slm_b0.050.h5",
+    "n_cells": 147671,
+    "uniformity_index": 0.5654364376902749
+  },
+  {
+    "name": "case_0041_D2.0mm_p5.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0041_D2.0mm_p5.0_Q2.0slm_b0.050.h5",
+    "n_cells": 147671,
+    "uniformity_index": 0.5652004165023785
+  },
+  {
+    "name": "case_0042_D2.0mm_p5.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0042_D2.0mm_p5.0_Q5.0slm_b0.050.h5",
+    "n_cells": 147671,
+    "uniformity_index": 0.5636137465543143
+  },
+  {
+    "name": "case_0043_D2.0mm_p5.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0043_D2.0mm_p5.0_Q10.0slm_b0.050.h5",
+    "n_cells": 147671,
+    "uniformity_index": 0.5578157472314187
+  },
+  {
+    "name": "case_0044_D2.0mm_p6.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0044_D2.0mm_p6.0_Q1.0slm_b0.050.h5",
+    "n_cells": 132551,
+    "uniformity_index": 0.5829189197756112
+  },
+  {
+    "name": "case_0045_D2.0mm_p6.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0045_D2.0mm_p6.0_Q2.0slm_b0.050.h5",
+    "n_cells": 132551,
+    "uniformity_index": 0.5826528226130755
+  },
+  {
+    "name": "case_0046_D2.0mm_p6.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0046_D2.0mm_p6.0_Q5.0slm_b0.050.h5",
+    "n_cells": 132551,
+    "uniformity_index": 0.5809895095660327
+  },
+  {
+    "name": "case_0047_D2.0mm_p6.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0047_D2.0mm_p6.0_Q10.0slm_b0.050.h5",
+    "n_cells": 132551,
+    "uniformity_index": 0.5752110506874739
+  },
+  {
+    "name": "case_0048_D2.5mm_p3.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0048_D2.5mm_p3.0_Q1.0slm_b0.050.h5",
+    "n_cells": 216495,
+    "uniformity_index": 0.47093552088857393
+  },
+  {
+    "name": "case_0049_D2.5mm_p3.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0049_D2.5mm_p3.0_Q2.0slm_b0.050.h5",
+    "n_cells": 216495,
+    "uniformity_index": 0.4706868590778799
+  },
+  {
+    "name": "case_0050_D2.5mm_p3.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0050_D2.5mm_p3.0_Q5.0slm_b0.050.h5",
+    "n_cells": 216495,
+    "uniformity_index": 0.46883538828001725
+  },
+  {
+    "name": "case_0051_D2.5mm_p3.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0051_D2.5mm_p3.0_Q10.0slm_b0.050.h5",
+    "n_cells": 216495,
+    "uniformity_index": 0.4624733733110793
+  },
+  {
+    "name": "case_0052_D2.5mm_p4.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0052_D2.5mm_p4.0_Q1.0slm_b0.050.h5",
+    "n_cells": 157247,
+    "uniformity_index": 0.5588114911195484
+  },
+  {
+    "name": "case_0053_D2.5mm_p4.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0053_D2.5mm_p4.0_Q2.0slm_b0.050.h5",
+    "n_cells": 157247,
+    "uniformity_index": 0.5585660568501036
+  },
+  {
+    "name": "case_0054_D2.5mm_p4.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0054_D2.5mm_p4.0_Q5.0slm_b0.050.h5",
+    "n_cells": 157247,
+    "uniformity_index": 0.5569213303620535
+  },
+  {
+    "name": "case_0055_D2.5mm_p4.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0055_D2.5mm_p4.0_Q10.0slm_b0.050.h5",
+    "n_cells": 157247,
+    "uniformity_index": 0.550986944346407
+  },
+  {
+    "name": "case_0056_D2.5mm_p5.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0056_D2.5mm_p5.0_Q1.0slm_b0.050.h5",
+    "n_cells": 134819,
+    "uniformity_index": 0.5888391319423056
+  },
+  {
+    "name": "case_0057_D2.5mm_p5.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0057_D2.5mm_p5.0_Q2.0slm_b0.050.h5",
+    "n_cells": 134819,
+    "uniformity_index": 0.588617504939539
+  },
+  {
+    "name": "case_0058_D2.5mm_p5.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0058_D2.5mm_p5.0_Q5.0slm_b0.050.h5",
+    "n_cells": 134819,
+    "uniformity_index": 0.5871269713888618
+  },
+  {
+    "name": "case_0059_D2.5mm_p5.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0059_D2.5mm_p5.0_Q10.0slm_b0.050.h5",
+    "n_cells": 134819,
+    "uniformity_index": 0.5817283910696628
+  },
+  {
+    "name": "case_0060_D2.5mm_p6.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0060_D2.5mm_p6.0_Q1.0slm_b0.050.h5",
+    "n_cells": 122163,
+    "uniformity_index": 0.45670435284235145
+  },
+  {
+    "name": "case_0061_D2.5mm_p6.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0061_D2.5mm_p6.0_Q2.0slm_b0.050.h5",
+    "n_cells": 122163,
+    "uniformity_index": 0.4562440549555098
+  },
+  {
+    "name": "case_0062_D2.5mm_p6.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0062_D2.5mm_p6.0_Q5.0slm_b0.050.h5",
+    "n_cells": 122163,
+    "uniformity_index": 0.45331567092472025
+  },
+  {
+    "name": "case_0063_D2.5mm_p6.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0063_D2.5mm_p6.0_Q10.0slm_b0.050.h5",
+    "n_cells": 122163,
+    "uniformity_index": 0.4439183993476544
+  },
+  {
+    "name": "case_0064_D3.0mm_p3.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0064_D3.0mm_p3.0_Q1.0slm_b0.050.h5",
+    "n_cells": 196391,
+    "uniformity_index": 0.5122010430130711
+  },
+  {
+    "name": "case_0065_D3.0mm_p3.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0065_D3.0mm_p3.0_Q2.0slm_b0.050.h5",
+    "n_cells": 196391,
+    "uniformity_index": 0.5119494164912073
+  },
+  {
+    "name": "case_0066_D3.0mm_p3.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0066_D3.0mm_p3.0_Q5.0slm_b0.050.h5",
+    "n_cells": 196391,
+    "uniformity_index": 0.5101615367247658
+  },
+  {
+    "name": "case_0067_D3.0mm_p3.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0067_D3.0mm_p3.0_Q10.0slm_b0.050.h5",
+    "n_cells": 196391,
+    "uniformity_index": 0.5038547762868302
+  },
+  {
+    "name": "case_0068_D3.0mm_p4.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0068_D3.0mm_p4.0_Q1.0slm_b0.050.h5",
+    "n_cells": 147167,
+    "uniformity_index": 0.5717535385620718
+  },
+  {
+    "name": "case_0069_D3.0mm_p4.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0069_D3.0mm_p4.0_Q2.0slm_b0.050.h5",
+    "n_cells": 147167,
+    "uniformity_index": 0.5714951116333945
+  },
+  {
+    "name": "case_0070_D3.0mm_p4.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0070_D3.0mm_p4.0_Q5.0slm_b0.050.h5",
+    "n_cells": 147167,
+    "uniformity_index": 0.5698156304725377
+  },
+  {
+    "name": "case_0071_D3.0mm_p4.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0071_D3.0mm_p4.0_Q10.0slm_b0.050.h5",
+    "n_cells": 147167,
+    "uniformity_index": 0.5639750206853877
+  },
+  {
+    "name": "case_0072_D3.0mm_p5.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0072_D3.0mm_p5.0_Q1.0slm_b0.050.h5",
+    "n_cells": 129723,
+    "uniformity_index": 0.4916752347069532
+  },
+  {
+    "name": "case_0073_D3.0mm_p5.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0073_D3.0mm_p5.0_Q2.0slm_b0.050.h5",
+    "n_cells": 129723,
+    "uniformity_index": 0.4912336186426245
+  },
+  {
+    "name": "case_0074_D3.0mm_p5.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0074_D3.0mm_p5.0_Q5.0slm_b0.050.h5",
+    "n_cells": 129723,
+    "uniformity_index": 0.4885216872641913
+  },
+  {
+    "name": "case_0075_D3.0mm_p5.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0075_D3.0mm_p5.0_Q10.0slm_b0.050.h5",
+    "n_cells": 129723,
+    "uniformity_index": 0.4798356018683696
+  },
+  {
+    "name": "case_0076_D3.0mm_p6.0_Q1.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0076_D3.0mm_p6.0_Q1.0slm_b0.050.h5",
+    "n_cells": 114715,
+    "uniformity_index": 0.3581571578993825
+  },
+  {
+    "name": "case_0077_D3.0mm_p6.0_Q2.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0077_D3.0mm_p6.0_Q2.0slm_b0.050.h5",
+    "n_cells": 114715,
+    "uniformity_index": 0.3576006040975537
+  },
+  {
+    "name": "case_0078_D3.0mm_p6.0_Q5.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0078_D3.0mm_p6.0_Q5.0slm_b0.050.h5",
+    "n_cells": 114715,
+    "uniformity_index": 0.35405485663198344
+  },
+  {
+    "name": "case_0079_D3.0mm_p6.0_Q10.0slm_b0.050",
+    "status": "done",
+    "out": "data/processed/ald_hdf5/case_0079_D3.0mm_p6.0_Q10.0slm_b0.050.h5",
+    "n_cells": 114715,
+    "uniformity_index": 0.3429218732620579
+  }
+]

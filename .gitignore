@@ -1,6 +1,7 @@
 data/raw/
 data/processed/
 *.h5
+!data/sample/**/*.h5
 *.npz
 __pycache__/
 *.pyc
